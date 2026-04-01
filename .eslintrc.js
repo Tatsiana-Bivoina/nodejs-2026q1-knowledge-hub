@@ -21,4 +21,13 @@ module.exports = {
     '@typescript-eslint/explicit-module-boundary-types': 'off',
     '@typescript-eslint/no-explicit-any': 'off',
   },
+  overrides: [
+    {
+      files: ['test/**/*.ts'],
+      rules: {
+        '@typescript-eslint/no-unused-vars': 'off',
+        'prettier/prettier': 'off',
+      },
+    },
+  ],
 };
