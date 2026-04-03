@@ -11,6 +11,14 @@ export type UserRecord = {
   updatedAt: number;
 };
 
+export type CategoryRecord = {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type ArticleRecord = {
   id: string;
   title: string;
@@ -26,6 +34,7 @@ export type ArticleRecord = {
 @Injectable()
 export class StorageService {
   readonly users = new Map<string, UserRecord>();
+  readonly categories = new Map<string, CategoryRecord>();
   readonly articles = new Map<string, ArticleRecord>();
 
   findUserByLogin(login: string): UserRecord | undefined {
@@ -36,6 +45,15 @@ export class StorageService {
     for (const a of this.articles.values()) {
       if (a.authorId === userId) {
         a.authorId = null;
+        a.updatedAt = Date.now();
+      }
+    }
+  }
+
+  nullifyArticleCategory(categoryId: string): void {
+    for (const a of this.articles.values()) {
+      if (a.categoryId === categoryId) {
+        a.categoryId = null;
         a.updatedAt = Date.now();
       }
     }

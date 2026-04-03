@@ -22,6 +22,14 @@ export class ArticlesService {
     }
   }
 
+  private ensureCategoryRef(categoryId: string | null | undefined): void {
+    if (categoryId) {
+      if (!this.storage.categories.has(categoryId)) {
+        throw new BadRequestException();
+      }
+    }
+  }
+
   findAll(query: ArticleFilterQueryDto): ArticleRecord[] {
     let list = [...this.storage.articles.values()];
     if (query.status !== undefined) {
@@ -46,6 +54,7 @@ export class ArticlesService {
 
   create(dto: CreateArticleDto): ArticleRecord {
     this.ensureAuthorRef(dto.authorId ?? null);
+    this.ensureCategoryRef(dto.categoryId ?? null);
     const now = Date.now();
     const article: ArticleRecord = {
       id: randomUUID(),
@@ -66,7 +75,10 @@ export class ArticlesService {
     const article = this.findOne(id);
     const nextAuthor =
       dto.authorId !== undefined ? dto.authorId : article.authorId;
+    const nextCategory =
+      dto.categoryId !== undefined ? dto.categoryId : article.categoryId;
     this.ensureAuthorRef(nextAuthor);
+    this.ensureCategoryRef(nextCategory);
 
     if (dto.title !== undefined) {
       article.title = dto.title;
