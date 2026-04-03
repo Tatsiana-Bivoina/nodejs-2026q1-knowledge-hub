@@ -30,7 +30,9 @@ export class ArticlesService {
     }
   }
 
-  findAll(query: ArticleFilterQueryDto): ArticleRecord[] {
+  findAll(
+    query: Pick<ArticleFilterQueryDto, 'status' | 'categoryId' | 'tag'>,
+  ): ArticleRecord[] {
     let list = [...this.storage.articles.values()];
     if (query.status !== undefined) {
       list = list.filter((a) => a.status === query.status);

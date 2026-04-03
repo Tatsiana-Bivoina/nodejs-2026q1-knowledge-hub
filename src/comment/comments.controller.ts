@@ -18,6 +18,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { applyPagination } from '../common/pagination/paginated-result';
 import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
 import { CommentsService } from './comments.service';
 import { CommentArticleQueryDto } from './dto/comment-article.query.dto';
@@ -32,7 +33,10 @@ export class CommentsController {
   @ApiOperation({
     summary: 'List comments for an article (articleId required)',
   })
-  @ApiOkResponse({ description: 'Comments for the given article' })
+  @ApiOkResponse({
+    description:
+      'Array of comments, or { total, page, limit, data } with ?page=&limit=',
+  })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: 'Missing or invalid articleId query',
@@ -43,7 +47,9 @@ export class CommentsController {
     },
   })
   findByArticle(@Query() query: CommentArticleQueryDto) {
-    return this.commentsService.findByArticle(query.articleId);
+    const { page, limit, articleId } = query;
+    const list = this.commentsService.findByArticle(articleId);
+    return applyPagination(list, page, limit);
   }
 
   @Get(':id')

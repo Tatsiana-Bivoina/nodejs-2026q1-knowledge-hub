@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import {
   ApiCreatedResponse,
@@ -18,6 +19,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { applyPagination } from '../common/pagination/paginated-result';
 import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -30,9 +33,16 @@ export class CategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'List all categories' })
-  @ApiOkResponse({ description: 'All category records' })
-  findAll() {
-    return this.categoriesService.findAll();
+  @ApiOkResponse({
+    description:
+      'Array of categories, or { total, page, limit, data } with ?page=&limit=',
+  })
+  findAll(@Query() query: PaginationQueryDto) {
+    return applyPagination(
+      this.categoriesService.findAll(),
+      query.page,
+      query.limit,
+    );
   }
 
   @Get(':id')

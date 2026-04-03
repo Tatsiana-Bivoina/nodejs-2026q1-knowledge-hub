@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { applyPagination } from '../common/pagination/paginated-result';
 import { ArticlesService } from './articles.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
@@ -24,10 +25,13 @@ export class ArticlesController {
 
   @Get()
   @ApiOperation({
-    summary: 'List articles (optional filters: status, categoryId, tag)',
+    summary:
+      'List articles (filters: status, categoryId, tag; pagination: page, limit)',
   })
   findAll(@Query() query: ArticleFilterQueryDto) {
-    return this.articlesService.findAll(query);
+    const { page, limit, ...filter } = query;
+    const list = this.articlesService.findAll(filter);
+    return applyPagination(list, page, limit);
   }
 
   @Get(':id')
