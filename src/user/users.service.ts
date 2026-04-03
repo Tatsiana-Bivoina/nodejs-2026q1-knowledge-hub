@@ -93,6 +93,7 @@ export class UsersService {
       throw new NotFoundException();
     }
     this.storage.nullifyArticleAuthor(id);
+    this.storage.deleteCommentsByAuthor(id);
     this.storage.users.delete(id);
   }
 }

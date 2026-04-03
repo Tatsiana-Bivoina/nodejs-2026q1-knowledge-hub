@@ -5,6 +5,7 @@ import { StorageModule } from './database/storage.module';
 import { UserModule } from './user/user.module';
 import { ArticleModule } from './article/article.module';
 import { CategoryModule } from './category/category.module';
+import { CommentModule } from './comment/comment.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { CategoryModule } from './category/category.module';
     UserModule,
     CategoryModule,
     ArticleModule,
+    CommentModule,
   ],
 })
 export class AppModule implements NestModule {

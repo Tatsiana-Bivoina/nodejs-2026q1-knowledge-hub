@@ -106,6 +106,7 @@ export class ArticlesService {
     if (!this.storage.articles.has(id)) {
       throw new NotFoundException();
     }
+    this.storage.deleteCommentsByArticle(id);
     this.storage.articles.delete(id);
   }
 }

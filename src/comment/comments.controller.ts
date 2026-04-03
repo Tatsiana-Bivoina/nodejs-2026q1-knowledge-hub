@@ -1,0 +1,137 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
+import { CommentsService } from './comments.service';
+import { CommentArticleQueryDto } from './dto/comment-article.query.dto';
+import { CreateCommentDto } from './dto/create-comment.dto';
+
+@ApiTags('comment')
+@Controller('comment')
+export class CommentsController {
+  constructor(private readonly commentsService: CommentsService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List comments for an article (articleId required)',
+  })
+  @ApiOkResponse({ description: 'Comments for the given article' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Missing or invalid articleId query',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(400, 'Bad Request'),
+      },
+    },
+  })
+  findByArticle(@Query() query: CommentArticleQueryDto) {
+    return this.commentsService.findByArticle(query.articleId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get comment by id' })
+  @ApiOkResponse({ description: 'Comment record' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid UUID (not v4)',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(
+          400,
+          'Bad Request',
+          'Validation failed (uuid)',
+        ),
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Comment does not exist',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(404, 'Not Found', 'Comment not found'),
+      },
+    },
+  })
+  findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.commentsService.findOne(id);
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create comment' })
+  @ApiCreatedResponse({ description: 'Created comment' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Missing/invalid content, articleId, or authorId',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(400, 'Bad Request'),
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    description: 'articleId does not reference an existing article',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(
+          422,
+          'Unprocessable Entity',
+          'Article not found',
+        ),
+      },
+    },
+  })
+  create(@Body() dto: CreateCommentDto) {
+    return this.commentsService.create(dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete comment' })
+  @ApiNoContentResponse({ description: 'Comment deleted' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid UUID (not v4)',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(
+          400,
+          'Bad Request',
+          'Validation failed (uuid)',
+        ),
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Comment does not exist',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(404, 'Not Found', 'Comment not found'),
+      },
+    },
+  })
+  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    this.commentsService.remove(id);
+  }
+}
