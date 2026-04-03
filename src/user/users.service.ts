@@ -92,6 +92,7 @@ export class UsersService {
     if (!this.storage.users.has(id)) {
       throw new NotFoundException();
     }
+    this.storage.nullifyArticleAuthor(id);
     this.storage.users.delete(id);
   }
 }
