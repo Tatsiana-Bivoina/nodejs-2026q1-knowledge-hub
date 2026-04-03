@@ -13,10 +13,23 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { applyPagination } from '../common/pagination/paginated-result';
+import { applySorting } from '../common/pagination/apply-sorting';
+import { ArticleRecord } from '../database/storage.service';
 import { ArticlesService } from './articles.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ArticleFilterQueryDto } from './dto/article-filter.query.dto';
+
+const ARTICLE_SORT_KEYS: readonly (keyof ArticleRecord)[] = [
+  'id',
+  'title',
+  'content',
+  'status',
+  'authorId',
+  'categoryId',
+  'createdAt',
+  'updatedAt',
+];
 
 @ApiTags('article')
 @Controller('article')
@@ -26,11 +39,16 @@ export class ArticlesController {
   @Get()
   @ApiOperation({
     summary:
-      'List articles (filters: status, categoryId, tag; pagination: page, limit)',
+      'List articles (filters; optional sortBy, order; pagination: page, limit)',
   })
   findAll(@Query() query: ArticleFilterQueryDto) {
-    const { page, limit, ...filter } = query;
-    const list = this.articlesService.findAll(filter);
+    const { page, limit, sortBy, order, ...filter } = query;
+    const list = applySorting(
+      this.articlesService.findAll(filter),
+      sortBy,
+      order,
+      ARTICLE_SORT_KEYS,
+    );
     return applyPagination(list, page, limit);
   }
 

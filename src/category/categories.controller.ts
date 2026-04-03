@@ -21,10 +21,20 @@ import {
 } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { applyPagination } from '../common/pagination/paginated-result';
+import { applySorting } from '../common/pagination/apply-sorting';
+import { CategoryRecord } from '../database/storage.service';
 import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+
+const CATEGORY_SORT_KEYS: readonly (keyof CategoryRecord)[] = [
+  'id',
+  'name',
+  'description',
+  'createdAt',
+  'updatedAt',
+];
 
 @ApiTags('category')
 @Controller('category')
@@ -32,17 +42,23 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all categories' })
+  @ApiOperation({
+    summary:
+      'List all categories (optional sortBy, order; pagination: page, limit)',
+  })
   @ApiOkResponse({
     description:
       'Array of categories, or { total, page, limit, data } with ?page=&limit=',
   })
   findAll(@Query() query: PaginationQueryDto) {
-    return applyPagination(
+    const { page, limit, sortBy, order } = query;
+    const list = applySorting(
       this.categoriesService.findAll(),
-      query.page,
-      query.limit,
+      sortBy,
+      order,
+      CATEGORY_SORT_KEYS,
     );
+    return applyPagination(list, page, limit);
   }
 
   @Get(':id')

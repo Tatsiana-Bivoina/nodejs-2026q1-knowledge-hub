@@ -21,10 +21,20 @@ import {
 } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { applyPagination } from '../common/pagination/paginated-result';
+import { applySorting } from '../common/pagination/apply-sorting';
 import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
+import type { PublicUser } from './users.service';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
+
+const USER_SORT_KEYS: readonly (keyof PublicUser)[] = [
+  'id',
+  'login',
+  'role',
+  'createdAt',
+  'updatedAt',
+];
 
 @ApiTags('user')
 @Controller('user')
@@ -32,17 +42,22 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all users' })
+  @ApiOperation({
+    summary: 'List all users (optional sortBy, order; pagination: page, limit)',
+  })
   @ApiOkResponse({
     description:
       'Array of users (no password), or { total, page, limit, data } with ?page=&limit=',
   })
   findAll(@Query() query: PaginationQueryDto) {
-    return applyPagination(
+    const { page, limit, sortBy, order } = query;
+    const list = applySorting(
       this.usersService.findAll(),
-      query.page,
-      query.limit,
+      sortBy,
+      order,
+      USER_SORT_KEYS,
     );
+    return applyPagination(list, page, limit);
   }
 
   @Get(':id')

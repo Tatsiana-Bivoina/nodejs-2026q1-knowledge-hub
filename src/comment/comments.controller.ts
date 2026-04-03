@@ -19,10 +19,20 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { applyPagination } from '../common/pagination/paginated-result';
+import { applySorting } from '../common/pagination/apply-sorting';
+import { CommentRecord } from '../database/storage.service';
 import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
 import { CommentsService } from './comments.service';
 import { CommentArticleQueryDto } from './dto/comment-article.query.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
+
+const COMMENT_SORT_KEYS: readonly (keyof CommentRecord)[] = [
+  'id',
+  'content',
+  'articleId',
+  'authorId',
+  'createdAt',
+];
 
 @ApiTags('comment')
 @Controller('comment')
@@ -31,7 +41,8 @@ export class CommentsController {
 
   @Get()
   @ApiOperation({
-    summary: 'List comments for an article (articleId required)',
+    summary:
+      'List comments for an article (articleId required; optional sortBy, order; page, limit)',
   })
   @ApiOkResponse({
     description:
@@ -47,8 +58,13 @@ export class CommentsController {
     },
   })
   findByArticle(@Query() query: CommentArticleQueryDto) {
-    const { page, limit, articleId } = query;
-    const list = this.commentsService.findByArticle(articleId);
+    const { page, limit, sortBy, order, articleId } = query;
+    const list = applySorting(
+      this.commentsService.findByArticle(articleId),
+      sortBy,
+      order,
+      COMMENT_SORT_KEYS,
+    );
     return applyPagination(list, page, limit);
   }
 
