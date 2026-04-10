@@ -39,7 +39,9 @@ export class ArticlesService {
     authorId: string | null | undefined,
   ): Promise<void> {
     if (authorId) {
-      const user = await this.prisma.user.findUnique({ where: { id: authorId } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: authorId },
+      });
       if (!user) {
         throw new BadRequestException();
       }

@@ -23,16 +23,45 @@ cp .env.example .env
 Main variables:
 
 - `PORT=4000`
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/knowledge_hub?schema=public` (for local app run)
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
 - `POSTGRES_HOST=db`
 - `POSTGRES_PORT=5432`
 
+When app runs inside Docker Compose, `DATABASE_URL` is overridden in `docker-compose.yml` to use host `db`.
+
 ## Installing NPM modules
 
 ```
 npm install
+```
+
+## Prisma
+
+Generate Prisma client:
+
+```bash
+npm run prisma:generate
+```
+
+Apply local migrations during development:
+
+```bash
+npm run prisma:migrate
+```
+
+Apply existing migrations (CI/prod/Docker):
+
+```bash
+npx prisma migrate deploy
+```
+
+Seed database:
+
+```bash
+npm run prisma:seed
 ```
 
 ## Running application (without Docker)
@@ -58,6 +87,13 @@ After startup:
 - API: http://localhost:4000
 - Swagger: http://localhost:4000/doc
 - PostgreSQL: `localhost:5432`
+
+Apply migrations and seed (from host terminal):
+
+```bash
+npx prisma migrate deploy
+npm run prisma:seed
+```
 
 ### Start with Adminer (debug profile)
 
