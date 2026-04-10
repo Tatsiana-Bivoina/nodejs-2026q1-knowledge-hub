@@ -45,6 +45,8 @@ model Tag {
   id       String    @id @default(uuid()) @db.Uuid
   name     String    @unique
   articles Article[]
+
+  @@index([name])
 }
 
 model Article {
@@ -60,6 +62,9 @@ model Article {
   category   Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   comments   Comment[]
   tags       Tag[]
+
+  @@index([status])
+  @@index([categoryId])
 }
 
 model Comment {
