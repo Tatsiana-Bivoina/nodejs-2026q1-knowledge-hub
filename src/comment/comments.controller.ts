@@ -57,10 +57,10 @@ export class CommentsController {
       },
     },
   })
-  findByArticle(@Query() query: CommentArticleQueryDto) {
+  async findByArticle(@Query() query: CommentArticleQueryDto) {
     const { page, limit, sortBy, order, articleId } = query;
     const list = applySorting(
-      this.commentsService.findByArticle(articleId),
+      await this.commentsService.findByArticle(articleId),
       sortBy,
       order,
       COMMENT_SORT_KEYS,
@@ -153,7 +153,7 @@ export class CommentsController {
       },
     },
   })
-  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    this.commentsService.remove(id);
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.commentsService.remove(id);
   }
 }

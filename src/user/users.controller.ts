@@ -49,10 +49,10 @@ export class UsersController {
     description:
       'Array of users (no password), or { total, page, limit, data } with ?page=&limit=',
   })
-  findAll(@Query() query: PaginationQueryDto) {
+  async findAll(@Query() query: PaginationQueryDto) {
     const { page, limit, sortBy, order } = query;
     const list = applySorting(
-      this.usersService.findAll(),
+      await this.usersService.findAll(),
       sortBy,
       order,
       USER_SORT_KEYS,
@@ -186,7 +186,7 @@ export class UsersController {
       },
     },
   })
-  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    this.usersService.remove(id);
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.usersService.remove(id);
   }
 }

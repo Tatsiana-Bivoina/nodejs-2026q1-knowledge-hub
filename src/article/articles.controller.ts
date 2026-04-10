@@ -41,10 +41,10 @@ export class ArticlesController {
     summary:
       'List articles (filters; optional sortBy, order; pagination: page, limit)',
   })
-  findAll(@Query() query: ArticleFilterQueryDto) {
+  async findAll(@Query() query: ArticleFilterQueryDto) {
     const { page, limit, sortBy, order, ...filter } = query;
     const list = applySorting(
-      this.articlesService.findAll(filter),
+      await this.articlesService.findAll(filter),
       sortBy,
       order,
       ARTICLE_SORT_KEYS,
@@ -77,7 +77,7 @@ export class ArticlesController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete article' })
-  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    this.articlesService.remove(id);
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.articlesService.remove(id);
   }
 }

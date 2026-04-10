@@ -3,112 +3,182 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { StorageService, ArticleRecord } from '../database/storage.service';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import {
+  toApiArticleStatus,
+  toPrismaArticleStatus,
+} from '../database/prisma-enums';
+import { ArticleRecord } from '../database/storage.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
 import { ArticleFilterQueryDto } from './dto/article-filter.query.dto';
 import { ArticleStatus } from '../common/enums/article-status.enum';
 
+type ArticleWithTags = Prisma.ArticleGetPayload<{ include: { tags: true } }>;
+
 @Injectable()
 export class ArticlesService {
-  constructor(private readonly storage: StorageService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  private ensureAuthorRef(authorId: string | null | undefined): void {
+  private toRecord(row: ArticleWithTags): ArticleRecord {
+    return {
+      id: row.id,
+      title: row.title,
+      content: row.content,
+      status: toApiArticleStatus(row.status),
+      authorId: row.authorId,
+      categoryId: row.categoryId,
+      tags: row.tags.map((t) => t.name),
+      createdAt: row.createdAt.getTime(),
+      updatedAt: row.updatedAt.getTime(),
+    };
+  }
+
+  private async ensureAuthorRef(
+    authorId: string | null | undefined,
+  ): Promise<void> {
     if (authorId) {
-      if (!this.storage.users.has(authorId)) {
+      const user = await this.prisma.user.findUnique({ where: { id: authorId } });
+      if (!user) {
         throw new BadRequestException();
       }
     }
   }
 
-  private ensureCategoryRef(categoryId: string | null | undefined): void {
+  private async ensureCategoryRef(
+    categoryId: string | null | undefined,
+  ): Promise<void> {
     if (categoryId) {
-      if (!this.storage.categories.has(categoryId)) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: categoryId },
+      });
+      if (!category) {
         throw new BadRequestException();
       }
     }
   }
 
-  findAll(
+  async findAll(
     query: Pick<ArticleFilterQueryDto, 'status' | 'categoryId' | 'tag'>,
-  ): ArticleRecord[] {
-    let list = [...this.storage.articles.values()];
+  ): Promise<ArticleRecord[]> {
+    const where: Prisma.ArticleWhereInput = {};
     if (query.status !== undefined) {
-      list = list.filter((a) => a.status === query.status);
+      where.status = toPrismaArticleStatus(query.status);
     }
     if (query.categoryId !== undefined) {
-      list = list.filter((a) => a.categoryId === query.categoryId);
+      where.categoryId = query.categoryId;
     }
     if (query.tag !== undefined) {
-      list = list.filter((a) => a.tags.includes(query.tag));
+      where.tags = { some: { name: query.tag } };
     }
-    return list;
+    const rows = await this.prisma.article.findMany({
+      where,
+      include: { tags: true },
+    });
+    return rows.map((r) => this.toRecord(r));
   }
 
-  findOne(id: string): ArticleRecord {
-    const a = this.storage.articles.get(id);
-    if (!a) {
+  async findOne(id: string): Promise<ArticleRecord> {
+    const row = await this.prisma.article.findUnique({
+      where: { id },
+      include: { tags: true },
+    });
+    if (!row) {
       throw new NotFoundException();
     }
-    return a;
+    return this.toRecord(row);
   }
 
-  create(dto: CreateArticleDto): ArticleRecord {
-    this.ensureAuthorRef(dto.authorId ?? null);
-    this.ensureCategoryRef(dto.categoryId ?? null);
-    const now = Date.now();
-    const article: ArticleRecord = {
-      id: randomUUID(),
-      title: dto.title,
-      content: dto.content,
-      status: dto.status,
-      authorId: dto.authorId ?? null,
-      categoryId: dto.categoryId ?? null,
-      tags: dto.tags ?? [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.storage.articles.set(article.id, article);
-    return article;
+  async create(dto: CreateArticleDto): Promise<ArticleRecord> {
+    await this.ensureAuthorRef(dto.authorId ?? null);
+    await this.ensureCategoryRef(dto.categoryId ?? null);
+    const row = await this.prisma.article.create({
+      data: {
+        title: dto.title,
+        content: dto.content,
+        status: toPrismaArticleStatus(dto.status),
+        ...(dto.authorId ? { author: { connect: { id: dto.authorId } } } : {}),
+        ...(dto.categoryId
+          ? { category: { connect: { id: dto.categoryId } } }
+          : {}),
+        ...(dto.tags?.length
+          ? {
+              tags: {
+                connectOrCreate: dto.tags.map((name) => ({
+                  where: { name },
+                  create: { name },
+                })),
+              },
+            }
+          : {}),
+      },
+      include: { tags: true },
+    });
+    return this.toRecord(row);
   }
 
-  update(id: string, dto: UpdateArticleDto): ArticleRecord {
-    const article = this.findOne(id);
+  async update(id: string, dto: UpdateArticleDto): Promise<ArticleRecord> {
+    const current = await this.prisma.article.findUnique({
+      where: { id },
+      include: { tags: true },
+    });
+    if (!current) {
+      throw new NotFoundException();
+    }
     const nextAuthor =
-      dto.authorId !== undefined ? dto.authorId : article.authorId;
+      dto.authorId !== undefined ? dto.authorId : current.authorId;
     const nextCategory =
-      dto.categoryId !== undefined ? dto.categoryId : article.categoryId;
-    this.ensureAuthorRef(nextAuthor);
-    this.ensureCategoryRef(nextCategory);
+      dto.categoryId !== undefined ? dto.categoryId : current.categoryId;
+    await this.ensureAuthorRef(nextAuthor);
+    await this.ensureCategoryRef(nextCategory);
 
+    const data: Prisma.ArticleUpdateInput = {};
     if (dto.title !== undefined) {
-      article.title = dto.title;
+      data.title = dto.title;
     }
     if (dto.content !== undefined) {
-      article.content = dto.content;
+      data.content = dto.content;
     }
     if (dto.status !== undefined) {
-      article.status = dto.status as ArticleStatus;
+      data.status = toPrismaArticleStatus(dto.status as ArticleStatus);
     }
     if (dto.authorId !== undefined) {
-      article.authorId = dto.authorId;
+      data.author = dto.authorId
+        ? { connect: { id: dto.authorId } }
+        : { disconnect: true };
     }
     if (dto.categoryId !== undefined) {
-      article.categoryId = dto.categoryId;
+      data.category = dto.categoryId
+        ? { connect: { id: dto.categoryId } }
+        : { disconnect: true };
     }
     if (dto.tags !== undefined) {
-      article.tags = dto.tags;
+      const upserted = await Promise.all(
+        dto.tags.map((name) =>
+          this.prisma.tag.upsert({
+            where: { name },
+            create: { name },
+            update: {},
+          }),
+        ),
+      );
+      data.tags = { set: upserted.map((t) => ({ id: t.id })) };
     }
-    article.updatedAt = Date.now();
-    return article;
+
+    const row = await this.prisma.article.update({
+      where: { id },
+      data,
+      include: { tags: true },
+    });
+    return this.toRecord(row);
   }
 
-  remove(id: string): void {
-    if (!this.storage.articles.has(id)) {
+  async remove(id: string): Promise<void> {
+    try {
+      await this.prisma.article.delete({ where: { id } });
+    } catch {
       throw new NotFoundException();
     }
-    this.storage.deleteCommentsByArticle(id);
-    this.storage.articles.delete(id);
   }
 }

@@ -4,52 +4,76 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { StorageService, CommentRecord } from '../database/storage.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { CommentRecord } from '../database/storage.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
 @Injectable()
 export class CommentsService {
-  constructor(private readonly storage: StorageService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  findByArticle(articleId: string): CommentRecord[] {
-    return [...this.storage.comments.values()].filter(
-      (c) => c.articleId === articleId,
-    );
+  private toRecord(row: {
+    id: string;
+    content: string;
+    articleId: string;
+    authorId: string | null;
+    createdAt: Date;
+  }): CommentRecord {
+    return {
+      id: row.id,
+      content: row.content,
+      articleId: row.articleId,
+      authorId: row.authorId,
+      createdAt: row.createdAt.getTime(),
+    };
   }
 
-  findOne(id: string): CommentRecord {
-    const comment = this.storage.comments.get(id);
-    if (!comment) {
+  async findByArticle(articleId: string): Promise<CommentRecord[]> {
+    const rows = await this.prisma.comment.findMany({
+      where: { articleId },
+    });
+    return rows.map((r) => this.toRecord(r));
+  }
+
+  async findOne(id: string): Promise<CommentRecord> {
+    const row = await this.prisma.comment.findUnique({ where: { id } });
+    if (!row) {
       throw new NotFoundException('Comment not found');
     }
-    return comment;
+    return this.toRecord(row);
   }
 
-  create(dto: CreateCommentDto): CommentRecord {
-    if (!this.storage.articles.has(dto.articleId)) {
+  async create(dto: CreateCommentDto): Promise<CommentRecord> {
+    const article = await this.prisma.article.findUnique({
+      where: { id: dto.articleId },
+    });
+    if (!article) {
       throw new UnprocessableEntityException('Article not found');
     }
     const authorId = dto.authorId ?? null;
-    if (authorId && !this.storage.users.has(authorId)) {
-      throw new BadRequestException();
+    if (authorId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: authorId },
+      });
+      if (!user) {
+        throw new BadRequestException();
+      }
     }
-    const now = Date.now();
-    const comment: CommentRecord = {
-      id: randomUUID(),
-      content: dto.content,
-      articleId: dto.articleId,
-      authorId,
-      createdAt: now,
-    };
-    this.storage.comments.set(comment.id, comment);
-    return comment;
+    const row = await this.prisma.comment.create({
+      data: {
+        content: dto.content,
+        article: { connect: { id: dto.articleId } },
+        ...(authorId ? { author: { connect: { id: authorId } } } : {}),
+      },
+    });
+    return this.toRecord(row);
   }
 
-  remove(id: string): void {
-    if (!this.storage.comments.has(id)) {
+  async remove(id: string): Promise<void> {
+    try {
+      await this.prisma.comment.delete({ where: { id } });
+    } catch {
       throw new NotFoundException('Comment not found');
     }
-    this.storage.comments.delete(id);
   }
 }
