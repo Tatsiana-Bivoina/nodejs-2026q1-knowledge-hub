@@ -6,6 +6,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { nestHttpExceptionSchema } from '../common/swagger/nest-exception.schema';
 import { AuthService, AuthTokens } from './auth.service';
@@ -13,6 +14,7 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { Public } from './decorators/public.decorator';
+import { PublicUser } from '../user/users.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -28,8 +30,8 @@ export class AuthController {
     description: 'Invalid signup dto',
     schema: nestHttpExceptionSchema(400, 'Bad Request'),
   })
-  async signup(@Body() dto: SignupDto): Promise<void> {
-    await this.authService.signup(dto);
+  async signup(@Body() dto: SignupDto): Promise<PublicUser> {
+    return this.authService.signup(dto);
   }
 
   @Post('login')
@@ -73,9 +75,9 @@ export class AuthController {
       required: ['accessToken', 'refreshToken'],
     },
   })
-  @ApiBadRequestResponse({
-    description: 'Missing or invalid refreshToken',
-    schema: nestHttpExceptionSchema(400, 'Bad Request'),
+  @ApiUnauthorizedResponse({
+    description: 'No refreshToken in body',
+    schema: nestHttpExceptionSchema(401, 'Unauthorized'),
   })
   @ApiForbiddenResponse({
     description: 'Refresh token is invalid or expired',

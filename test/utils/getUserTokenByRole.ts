@@ -23,7 +23,7 @@ const getUserTokenByRole = async (
   // If role is not 'viewer' (default), update user role via admin
   if (role !== 'viewer') {
     const updateRoleResponse = await request
-      .put(usersRoutes.update(userId))
+      .patch(`${usersRoutes.getById(userId)}/role`)
       .set(adminHeaders)
       .send({ role });
 

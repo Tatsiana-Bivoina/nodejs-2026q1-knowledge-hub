@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 import {
   shouldAuthorizationBeTested,
   getTokenAndUserId,
+  getAdminTokenAndUserId,
   getUserTokenByRole,
   removeTokenUser,
 } from '../utils';
@@ -25,7 +26,7 @@ describe('RBAC - Comments (e2e)', () => {
   beforeAll(async () => {
     if (!shouldAuthorizationBeTested) return;
 
-    const adminResult = await getTokenAndUserId(request);
+    const adminResult = await getAdminTokenAndUserId(request);
     adminHeaders = { ...headers, Authorization: adminResult.token };
     adminUserId = adminResult.mockUserId;
 
@@ -64,9 +65,6 @@ describe('RBAC - Comments (e2e)', () => {
     }
     if (editorUserId) {
       await removeTokenUser(request, editorUserId, adminHeaders);
-    }
-    if (adminUserId) {
-      await removeTokenUser(request, adminUserId, adminHeaders);
     }
   });
 

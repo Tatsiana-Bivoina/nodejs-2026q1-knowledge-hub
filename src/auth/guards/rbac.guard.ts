@@ -61,17 +61,17 @@ export class RbacGuard implements CanActivate {
     request: AuthenticatedRequest,
     userId: string,
   ): Promise<boolean> {
-    switch (request.baseUrl) {
-      case '/article':
-        return this.checkEditorArticleAccess(request, userId);
-      case '/comment':
-        return this.checkEditorCommentAccess(request, userId);
-      case '/category':
-      case '/user':
-        throw new ForbiddenException();
-      default:
-        throw new ForbiddenException();
+    const path = request.path;
+    if (path.startsWith('/article')) {
+      return this.checkEditorArticleAccess(request, userId);
     }
+    if (path.startsWith('/comment')) {
+      return this.checkEditorCommentAccess(request, userId);
+    }
+    if (path.startsWith('/category') || path.startsWith('/user')) {
+      throw new ForbiddenException();
+    }
+    throw new ForbiddenException();
   }
 
   private async checkEditorArticleAccess(

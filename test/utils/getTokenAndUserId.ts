@@ -1,11 +1,11 @@
 import { authRoutes } from '../endpoints';
 
-const createUserDto = {
-  login: 'TEST_AUTH_LOGIN',
-  password: 'Tu6!@#%&',
-};
-
 const getTokenAndUserId = async (request) => {
+  const createUserDto = {
+    login: `TEST_AUTH_LOGIN_${Date.now()}`,
+    password: 'Tu6!@#%&',
+  };
+
   // create user
   const {
     body: { id: mockUserId },

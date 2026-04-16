@@ -1,12 +1,18 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { UsersService } from '../user/users.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { UserRole } from '../common/enums/user-role.enum';
+import { PublicUser } from '../user/users.service';
 
 type JwtPayload = {
+  userId: string;
   sub: string;
   login: string;
   role: UserRole;
@@ -49,8 +55,8 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async signup(dto: SignupDto): Promise<void> {
-    await this.usersService.create({
+  async signup(dto: SignupDto): Promise<PublicUser> {
+    return this.usersService.create({
       login: dto.login,
       password: dto.password,
       role: UserRole.VIEWER,
@@ -69,6 +75,7 @@ export class AuthService {
       throw new ForbiddenException();
     }
     const payload: JwtPayload = {
+      userId: user.id,
       sub: user.id,
       login: user.login,
       role: user.role,
@@ -77,6 +84,9 @@ export class AuthService {
   }
 
   async refresh(dto: RefreshDto): Promise<AuthTokens> {
+    if (!dto.refreshToken) {
+      throw new UnauthorizedException();
+    }
     try {
       const decoded = await this.jwtService.verifyAsync<JwtPayload>(
         dto.refreshToken,
@@ -85,6 +95,7 @@ export class AuthService {
         },
       );
       const payload: JwtPayload = {
+        userId: decoded.userId,
         sub: decoded.sub,
         login: decoded.login,
         role: decoded.role,
