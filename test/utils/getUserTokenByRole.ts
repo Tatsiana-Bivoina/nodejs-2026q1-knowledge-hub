@@ -1,11 +1,12 @@
 import { authRoutes, usersRoutes } from '../endpoints';
+import { randomUUID } from 'crypto';
 
 const getUserTokenByRole = async (
   request,
   role: 'admin' | 'editor' | 'viewer',
   adminHeaders: Record<string, string>,
 ) => {
-  const login = `TEST_RBAC_${role.toUpperCase()}_${Date.now()}`;
+  const login = `TEST_RBAC_${role.toUpperCase()}_${randomUUID()}`;
   const password = 'TestPass123!';
 
   // Create user via signup
@@ -41,7 +42,9 @@ const getUserTokenByRole = async (
   const { accessToken } = loginResponse.body;
 
   if (!accessToken) {
-    throw new Error(`Failed to login as ${role} user`);
+    throw new Error(
+      `Failed to login as ${role} user: status=${loginResponse.statusCode}, body=${JSON.stringify(loginResponse.body)}`,
+    );
   }
 
   return {

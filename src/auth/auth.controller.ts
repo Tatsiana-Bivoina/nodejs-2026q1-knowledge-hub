@@ -1,4 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiCreatedResponse,
@@ -15,6 +22,8 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { Public } from './decorators/public.decorator';
 import { PublicUser } from '../user/users.service';
+import { LogoutDto } from './dto/logout.dto';
+import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -23,6 +32,7 @@ export class AuthController {
 
   @Post('signup')
   @Public()
+  @UseGuards(AuthRateLimitGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Signup: create new user with viewer role' })
   @ApiCreatedResponse({ description: 'User created' })
@@ -36,6 +46,7 @@ export class AuthController {
 
   @Post('login')
   @Public()
+  @UseGuards(AuthRateLimitGuard)
   @ApiOperation({ summary: 'Login: get access and refresh tokens' })
   @ApiOkResponse({
     description: 'Tokens issued',
@@ -86,5 +97,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refresh(@Body() dto: RefreshDto): Promise<AuthTokens> {
     return this.authService.refresh(dto);
+  }
+
+  @Post('logout')
+  @Public()
+  @ApiOperation({ summary: 'Logout: revoke refresh token' })
+  @ApiOkResponse({ description: 'Refresh token revoked' })
+  @ApiForbiddenResponse({
+    description: 'Refresh token is invalid or expired',
+    schema: nestHttpExceptionSchema(403, 'Forbidden', 'Forbidden resource'),
+  })
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() dto: LogoutDto): Promise<void> {
+    await this.authService.logout(dto);
   }
 }

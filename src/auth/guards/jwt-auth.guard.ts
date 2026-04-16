@@ -33,7 +33,7 @@ export class JwtAuthGuard implements CanActivate {
 
     const token = this.extractBearerToken(request);
     if (!token) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('Access token is missing or malformed');
     }
 
     return this.validateToken(token, request);
@@ -68,7 +68,7 @@ export class JwtAuthGuard implements CanActivate {
       request.user = payload;
       return true;
     } catch {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('Access token is invalid or expired');
     }
   }
 }

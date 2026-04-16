@@ -4,12 +4,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
+import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../user/users.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PublicUser } from '../user/users.service';
+import { LogoutDto } from './dto/logout.dto';
 
 type JwtPayload = {
   userId: string;
@@ -28,6 +30,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private accessTtl(): string {
@@ -88,6 +91,13 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     try {
+      const isRevoked = await this.prisma.revokedRefreshToken.findUnique({
+        where: { token: dto.refreshToken },
+      });
+      if (isRevoked) {
+        throw new ForbiddenException();
+      }
+
       const decoded = await this.jwtService.verifyAsync<JwtPayload>(
         dto.refreshToken,
         {
@@ -104,5 +114,30 @@ export class AuthService {
     } catch {
       throw new ForbiddenException();
     }
+  }
+
+  async logout(dto: LogoutDto): Promise<void> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(
+        dto.refreshToken,
+        {
+          secret: process.env.JWT_SECRET_REFRESH_KEY,
+        },
+      );
+    } catch {
+      throw new ForbiddenException();
+    }
+
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await this.prisma.revokedRefreshToken.upsert({
+      where: { token: dto.refreshToken },
+      update: {},
+      create: {
+        token: dto.refreshToken,
+        userId: payload.userId,
+        expiresAt,
+      },
+    });
   }
 }

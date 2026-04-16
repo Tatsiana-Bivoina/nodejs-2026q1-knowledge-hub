@@ -8,12 +8,14 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RbacGuard } from './guards/rbac.guard';
+import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
 
 @Module({
   imports: [UserModule, ArticleModule, CommentModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [
     AuthService,
+    AuthRateLimitGuard,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
