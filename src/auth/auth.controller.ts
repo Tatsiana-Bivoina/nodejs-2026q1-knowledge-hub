@@ -12,6 +12,7 @@ import { AuthService, AuthTokens } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { Public } from './decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -19,6 +20,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
+  @Public()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Signup: create new user with viewer role' })
   @ApiCreatedResponse({ description: 'User created' })
@@ -31,6 +33,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Public()
   @ApiOperation({ summary: 'Login: get access and refresh tokens' })
   @ApiOkResponse({
     description: 'Tokens issued',
@@ -57,6 +60,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Public()
   @ApiOperation({ summary: 'Refresh: get new access and refresh tokens' })
   @ApiOkResponse({
     description: 'New tokens issued',

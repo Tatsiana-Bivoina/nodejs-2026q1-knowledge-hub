@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -37,6 +38,7 @@ const CATEGORY_SORT_KEYS: readonly (keyof CategoryRecord)[] = [
 ];
 
 @ApiTags('category')
+@ApiBearerAuth('access-token')
 @Controller('category')
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}

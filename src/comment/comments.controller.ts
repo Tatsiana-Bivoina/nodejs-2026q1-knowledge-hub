@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -35,6 +36,7 @@ const COMMENT_SORT_KEYS: readonly (keyof CommentRecord)[] = [
 ];
 
 @ApiTags('comment')
+@ApiBearerAuth('access-token')
 @Controller('comment')
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}

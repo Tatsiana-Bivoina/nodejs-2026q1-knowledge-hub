@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -37,6 +38,7 @@ const USER_SORT_KEYS: readonly (keyof PublicUser)[] = [
 ];
 
 @ApiTags('user')
+@ApiBearerAuth('access-token')
 @Controller('user')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

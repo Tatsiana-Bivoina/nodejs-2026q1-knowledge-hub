@@ -11,7 +11,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { applyPagination } from '../common/pagination/paginated-result';
 import { applySorting } from '../common/pagination/apply-sorting';
 import { ArticleRecord } from '../database/storage.service';
@@ -32,6 +32,7 @@ const ARTICLE_SORT_KEYS: readonly (keyof ArticleRecord)[] = [
 ];
 
 @ApiTags('article')
+@ApiBearerAuth('access-token')
 @Controller('article')
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
