@@ -14,7 +14,10 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { applyPagination } from '../common/pagination/paginated-result';
 import { applySorting } from '../common/pagination/apply-sorting';
+import { UserRole } from '../common/enums/user-role.enum';
 import { ArticleRecord } from '../database/storage.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthUser } from '../auth/types/auth-user.type';
 import { ArticlesService } from './articles.service';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
@@ -62,7 +65,10 @@ export class ArticlesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create article' })
-  create(@Body() dto: CreateArticleDto) {
+  create(@Body() dto: CreateArticleDto, @CurrentUser() user?: AuthUser) {
+    if (user?.role === UserRole.EDITOR) {
+      dto.authorId = user.sub;
+    }
     return this.articlesService.create(dto);
   }
 
@@ -71,7 +77,11 @@ export class ArticlesController {
   update(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateArticleDto,
+    @CurrentUser() user?: AuthUser,
   ) {
+    if (user?.role === UserRole.EDITOR) {
+      dto.authorId = user.sub;
+    }
     return this.articlesService.update(id, dto);
   }
 

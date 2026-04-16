@@ -19,6 +19,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthUser } from '../auth/types/auth-user.type';
+import { UserRole } from '../common/enums/user-role.enum';
 import { applyPagination } from '../common/pagination/paginated-result';
 import { applySorting } from '../common/pagination/apply-sorting';
 import { CommentRecord } from '../database/storage.service';
@@ -125,7 +128,10 @@ export class CommentsController {
       },
     },
   })
-  create(@Body() dto: CreateCommentDto) {
+  create(@Body() dto: CreateCommentDto, @CurrentUser() user?: AuthUser) {
+    if (user?.role === UserRole.EDITOR) {
+      dto.authorId = user.sub;
+    }
     return this.commentsService.create(dto);
   }
 

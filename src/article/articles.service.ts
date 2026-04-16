@@ -92,6 +92,17 @@ export class ArticlesService {
     return this.toRecord(row);
   }
 
+  async findAuthorId(id: string): Promise<string | null> {
+    const row = await this.prisma.article.findUnique({
+      where: { id },
+      select: { authorId: true },
+    });
+    if (!row) {
+      throw new NotFoundException();
+    }
+    return row.authorId;
+  }
+
   async create(dto: CreateArticleDto): Promise<ArticleRecord> {
     await this.ensureAuthorRef(dto.authorId ?? null);
     await this.ensureCategoryRef(dto.categoryId ?? null);

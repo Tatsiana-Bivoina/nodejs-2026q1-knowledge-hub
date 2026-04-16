@@ -43,6 +43,17 @@ export class CommentsService {
     return this.toRecord(row);
   }
 
+  async findAuthorId(id: string): Promise<string | null> {
+    const row = await this.prisma.comment.findUnique({
+      where: { id },
+      select: { authorId: true },
+    });
+    if (!row) {
+      throw new NotFoundException('Comment not found');
+    }
+    return row.authorId;
+  }
+
   async create(dto: CreateCommentDto): Promise<CommentRecord> {
     const article = await this.prisma.article.findUnique({
       where: { id: dto.articleId },
