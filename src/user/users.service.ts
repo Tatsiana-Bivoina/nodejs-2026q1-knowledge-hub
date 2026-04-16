@@ -120,4 +120,16 @@ export class UsersService {
       this.prisma.user.delete({ where: { id } }),
     ]);
   }
+
+  async updateRole(id: string, role: UserRole): Promise<PublicUser> {
+    try {
+      const row = await this.prisma.user.update({
+        where: { id },
+        data: { role: toPrismaUserRole(role) },
+      });
+      return this.toPublic(this.toRecord(row));
+    } catch {
+      throw new NotFoundException();
+    }
+  }
 }
