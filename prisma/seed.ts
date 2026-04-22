@@ -1,7 +1,17 @@
 import { PrismaClient, ArticleStatus, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not set');
+}
+
+const pool = new Pool({ connectionString });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(pool),
+});
 
 async function main(): Promise<void> {
   // Make seed repeatable
@@ -76,11 +86,13 @@ async function main(): Promise<void> {
 main()
   .then(async () => {
     await prisma.$disconnect();
+    await pool.end();
   })
   .catch(async (e) => {
     // eslint-disable-next-line no-console
     console.error(e);
     await prisma.$disconnect();
+    await pool.end();
     process.exit(1);
   });
 

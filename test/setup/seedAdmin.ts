@@ -15,11 +15,11 @@ export default async function globalSetup(): Promise<void> {
   try {
     await prisma.user.upsert({
       where: { login: SEED_ADMIN_LOGIN },
-      update: { role: 'admin', password: hashedPassword },
+      update: { role: 'ADMIN', password: hashedPassword },
       create: {
         login: SEED_ADMIN_LOGIN,
         password: hashedPassword,
-        role: 'admin',
+        role: 'ADMIN',
       },
     });
   } finally {
