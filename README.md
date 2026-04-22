@@ -3,7 +3,8 @@
 ## Prerequisites
 
 - Git - [Download & Install Git](https://git-scm.com/downloads).
-- Node.js - [Download & Install Node.js](https://nodejs.org/en/download/) and the npm package manager.
+- Node.js `>=24.10.0` - [Download & Install Node.js](https://nodejs.org/en/download/) and the npm package manager.
+- Docker Desktop (for Docker-based run and PostgreSQL).
 
 ## Downloading
 
@@ -32,6 +33,8 @@ Main variables:
 
 When app runs inside Docker Compose, `DATABASE_URL` is overridden in `docker-compose.yml` to use host `db`.
 
+If you use Docker PostgreSQL on `localhost:5432`, make sure local Postgres service (for example Postgres.app) is stopped, otherwise host and container DB can be mixed.
+
 ## Installing NPM modules
 
 ```
@@ -39,6 +42,8 @@ npm install
 ```
 
 ## Prisma
+
+Project uses Prisma 7 with `prisma.config.ts` (datasource URL is configured there, not in `schema.prisma`).
 
 Generate Prisma client:
 
@@ -62,6 +67,12 @@ Seed database:
 
 ```bash
 npm run prisma:seed
+```
+
+Reset DB + reapply migrations + seed:
+
+```bash
+npx prisma migrate reset --force
 ```
 
 ## Running application (without Docker)
@@ -94,6 +105,14 @@ Apply migrations and seed (from host terminal):
 npx prisma migrate deploy
 npm run prisma:seed
 ```
+
+Optional quick check that Docker DB is available on `5432`:
+
+```bash
+lsof -nP -iTCP:5432 -sTCP:LISTEN
+```
+
+You should see Docker proxy/container listener, not a local Postgres service.
 
 ### Start with Adminer (debug profile)
 
@@ -150,9 +169,9 @@ docker push tanyabivoina/knowledge-hub:latest
 
 ## Testing
 
-After application running open new terminal and enter:
+Before tests, make sure API is running (`npm start` or `docker compose up`) and DB migrations are applied.
 
-To run all tests without authorization
+To run base tests:
 
 ```
 npm run test
@@ -164,7 +183,7 @@ To run only one of all test suites
 npm run test -- <path to suite>
 ```
 
-To run all test with authorization
+To run all tests with authorization:
 
 ```
 npm run test:auth
