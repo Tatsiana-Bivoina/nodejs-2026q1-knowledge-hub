@@ -63,4 +63,15 @@ describe('AuthRateLimitGuard', () => {
 
     nowSpy.mockRestore();
   });
+
+  it('uses default window and max values when env is missing', () => {
+    delete process.env.TEST_MODE;
+    delete process.env.AUTH_RATE_LIMIT_WINDOW_MS;
+    delete process.env.AUTH_RATE_LIMIT_MAX;
+
+    const guard = new AuthRateLimitGuard();
+    const context = createContext({ path: '/auth/login', ip: '127.0.0.1' });
+
+    expect(guard.canActivate(context)).toBe(true);
+  });
 });

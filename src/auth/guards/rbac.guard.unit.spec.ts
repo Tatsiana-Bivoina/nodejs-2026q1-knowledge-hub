@@ -158,4 +158,63 @@ describe('RbacGuard', () => {
       ),
     ).rejects.toThrow(ForbiddenException);
   });
+
+  it('forbids editor on category and user paths', async () => {
+    await expect(
+      guard.canActivate(
+        makeContext({
+          path: '/category',
+          method: 'POST',
+          user: { sub: 'u-editor', role: UserRole.EDITOR },
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    await expect(
+      guard.canActivate(
+        makeContext({
+          path: '/user',
+          method: 'DELETE',
+          user: { sub: 'u-editor', role: UserRole.EDITOR },
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('forbids editor comment PUT and unknown paths', async () => {
+    await expect(
+      guard.canActivate(
+        makeContext({
+          path: '/comment/1',
+          method: 'PUT',
+          user: { sub: 'u-editor', role: UserRole.EDITOR },
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    await expect(
+      guard.canActivate(
+        makeContext({
+          path: '/unknown',
+          method: 'POST',
+          user: { sub: 'u-editor', role: UserRole.EDITOR },
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('forbids article PUT when next author is null', async () => {
+    articlesService.findAuthorId.mockResolvedValue('u-editor');
+    await expect(
+      guard.canActivate(
+        makeContext({
+          path: '/article/1',
+          method: 'PUT',
+          params: { id: 'a-1' },
+          user: { sub: 'u-editor', role: UserRole.EDITOR },
+          body: { authorId: null },
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
 });

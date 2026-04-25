@@ -134,4 +134,34 @@ describe('AuthService', () => {
       secret: 'refresh-secret',
     });
   });
+
+  it('refresh throws ForbiddenException for tampered/expired token', async () => {
+    prisma.revokedRefreshToken.findUnique.mockResolvedValue(null);
+    jwtService.verifyAsync.mockRejectedValue(new Error('jwt expired'));
+
+    await expect(service.refresh({ refreshToken: 'broken' })).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('logout stores refresh token in revoke list', async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      userId: 'u1',
+      sub: 'u1',
+      login: 'john',
+      role: UserRole.EDITOR,
+    });
+
+    await service.logout({ refreshToken: 'refresh-token' });
+
+    expect(prisma.revokedRefreshToken.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { token: 'refresh-token' },
+        create: expect.objectContaining({
+          token: 'refresh-token',
+          userId: 'u1',
+        }),
+      }),
+    );
+  });
 });
