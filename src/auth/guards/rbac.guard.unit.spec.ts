@@ -159,6 +159,20 @@ describe('RbacGuard', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
+  it('forbids editor DELETE comment when author differs', async () => {
+    commentsService.findAuthorId.mockResolvedValue('another-user');
+    await expect(
+      guard.canActivate(
+        makeContext({
+          path: '/comment/1',
+          method: 'DELETE',
+          params: { id: 'c-1' },
+          user: { sub: 'u-editor', role: UserRole.EDITOR },
+        }),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
   it('forbids editor on category and user paths', async () => {
     await expect(
       guard.canActivate(

@@ -42,6 +42,7 @@ describe('UsersService', () => {
   let service: UsersService;
   let prismaMock: {
     user: {
+      findMany: ReturnType<typeof vi.fn>;
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
@@ -55,6 +56,7 @@ describe('UsersService', () => {
   beforeEach(async () => {
     prismaMock = {
       user: {
+        findMany: vi.fn(),
         findUnique: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
@@ -173,5 +175,30 @@ describe('UsersService', () => {
     const result = await service.updateRole('u-1', UserRole.ADMIN);
 
     expect(result.role).toBe(UserRole.ADMIN);
+  });
+
+  it('findAll returns mapped public users', async () => {
+    prismaMock.user.findMany = vi
+      .fn()
+      .mockResolvedValue([makeRow({ role: PrismaUserRole.EDITOR })]);
+
+    const result = await service.findAll();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe(UserRole.EDITOR);
+  });
+
+  it('findRecordById returns full user record for existing user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'pw-hash' }));
+
+    const result = await service.findRecordById('u-1');
+
+    expect(result.passwordHash).toBe('pw-hash');
+    expect(result.login).toBe('john');
+  });
+
+  it('remove throws NotFoundException for missing user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
   });
 });

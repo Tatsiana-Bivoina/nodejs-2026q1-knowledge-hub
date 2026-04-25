@@ -83,6 +83,17 @@ describe('ArticlesService', () => {
     expect(result).toHaveLength(1);
   });
 
+  it('findAll uses empty where for empty filter', async () => {
+    prisma.article.findMany.mockResolvedValue([]);
+
+    await service.findAll({});
+
+    expect(prisma.article.findMany).toHaveBeenCalledWith({
+      where: {},
+      include: { tags: true },
+    });
+  });
+
   it('findOne throws NotFoundException for missing article', async () => {
     prisma.article.findUnique.mockResolvedValue(null);
     await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
@@ -138,6 +149,12 @@ describe('ArticlesService', () => {
     );
   });
 
+  it('findAuthorId returns author id for existing article', async () => {
+    prisma.article.findUnique.mockResolvedValue({ authorId: 'u1' });
+
+    await expect(service.findAuthorId('a1')).resolves.toBe('u1');
+  });
+
   it('update writes tag set when tags are provided', async () => {
     prisma.article.findUnique.mockResolvedValueOnce(articleRow());
     prisma.user.findUnique.mockResolvedValue({ id: 'u1' });
@@ -176,5 +193,29 @@ describe('ArticlesService', () => {
         categoryId: 'missing-category',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('update disconnects author and category when null is passed', async () => {
+    prisma.article.findUnique.mockResolvedValueOnce(articleRow());
+    prisma.article.update.mockResolvedValue(
+      articleRow({ authorId: null, categoryId: null }),
+    );
+
+    const result = await service.update('a1', {
+      authorId: null,
+      categoryId: null,
+    });
+
+    expect(prisma.article.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'a1' },
+        data: expect.objectContaining({
+          author: { disconnect: true },
+          category: { disconnect: true },
+        }),
+      }),
+    );
+    expect(result.authorId).toBeNull();
+    expect(result.categoryId).toBeNull();
   });
 });
