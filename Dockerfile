@@ -5,6 +5,9 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+# Prisma config may read DATABASE_URL; build has no DB — dummy is only for client generation.
+ARG DATABASE_URL=postgresql://postgres:postgres@localhost:5432/prisma_build_placeholder?schema=public
+ENV DATABASE_URL=${DATABASE_URL}
 RUN npx prisma generate
 RUN npm run build
 
