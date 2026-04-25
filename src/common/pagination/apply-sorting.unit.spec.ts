@@ -33,4 +33,23 @@ describe('applySorting', () => {
     const result = applySorting(items, 'score', 'desc', ['name', 'score']);
     expect(result.map((i) => i.id)).toEqual(['2', '1', '3']);
   });
+
+  it('keeps stable result for equal values', () => {
+    const equalItems: Item[] = [
+      { id: '1', name: 'same', score: 1 },
+      { id: '2', name: 'same', score: 1 },
+    ];
+    const result = applySorting(equalItems, 'name', 'asc', ['name']);
+    expect(result.map((i) => i.id)).toEqual(['1', '2']);
+  });
+
+  it('puts undefined-like values last', () => {
+    const withNulls: Item[] = [
+      { id: '1', name: null, score: null },
+      { id: '2', name: 'a', score: 2 },
+      { id: '3', name: 'b', score: 1 },
+    ];
+    const result = applySorting(withNulls, 'name', 'asc', ['name']);
+    expect(result.map((i) => i.id)).toEqual(['2', '3', '1']);
+  });
 });

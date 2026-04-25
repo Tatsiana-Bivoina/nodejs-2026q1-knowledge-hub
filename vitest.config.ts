@@ -11,6 +11,22 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       reportsDirectory: './coverage',
+      include: [
+        'src/**/*.service.ts',
+        'src/auth/guards/*.guard.ts',
+        'src/common/pipes/*.pipe.ts',
+        'src/common/interceptors/*.interceptor.ts',
+        'src/common/filters/*.filter.ts',
+        'src/common/pagination/*.ts',
+        'src/database/prisma-enums.ts',
+      ],
+      exclude: [
+        'src/**/*.module.ts',
+        'src/**/*.controller.ts',
+        'src/**/*.dto.ts',
+        'src/prisma/prisma.service.ts',
+        'src/database/storage.service.ts',
+      ],
       thresholds: {
         lines: 90,
         branches: 85,

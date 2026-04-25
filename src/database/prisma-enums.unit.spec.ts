@@ -44,4 +44,15 @@ describe('prisma-enums', () => {
       ArticleStatus.ARCHIVED,
     );
   });
+
+  it('handles unexpected values through exhaustive default branch', () => {
+    expect(toPrismaUserRole('unexpected' as UserRole)).toBe('unexpected');
+    expect(toApiUserRole('unexpected' as PrismaUserRole)).toBe('unexpected');
+    expect(toPrismaArticleStatus('unexpected' as ArticleStatus)).toBe(
+      'unexpected',
+    );
+    expect(toApiArticleStatus('unexpected' as PrismaArticleStatus)).toBe(
+      'unexpected',
+    );
+  });
 });
