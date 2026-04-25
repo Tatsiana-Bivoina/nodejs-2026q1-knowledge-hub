@@ -5,20 +5,33 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
-import { StorageService, UserRecord } from '../database/storage.service';
+import { User as PrismaUser } from '@prisma/client';
+import { UserRole } from '../common/enums/user-role.enum';
+import { PrismaService } from '../prisma/prisma.service';
+import { toApiUserRole, toPrismaUserRole } from '../database/prisma-enums';
+import { UserRecord } from '../database/storage.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
-import { UserRole } from '../common/enums/user-role.enum';
 
 export type PublicUser = Omit<UserRecord, 'passwordHash'>;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly storage: StorageService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private bcryptRounds(): number {
     return parseInt(process.env.CRYPT_SALT || '10', 10) || 10;
+  }
+
+  private toRecord(row: PrismaUser): UserRecord {
+    return {
+      id: row.id,
+      login: row.login,
+      passwordHash: row.password,
+      role: toApiUserRole(row.role),
+      createdAt: row.createdAt.getTime(),
+      updatedAt: row.updatedAt.getTime(),
+    };
   }
 
   toPublic(user: UserRecord): PublicUser {
@@ -31,43 +44,44 @@ export class UsersService {
     };
   }
 
-  findAll(): PublicUser[] {
-    return [...this.storage.users.values()].map((u) => this.toPublic(u));
+  async findAll(): Promise<PublicUser[]> {
+    const rows = await this.prisma.user.findMany();
+    return rows.map((r) => this.toPublic(this.toRecord(r)));
   }
 
-  findById(id: string): PublicUser {
-    const user = this.storage.users.get(id);
-    if (!user) {
+  async findById(id: string): Promise<PublicUser> {
+    const row = await this.prisma.user.findUnique({ where: { id } });
+    if (!row) {
       throw new NotFoundException();
     }
-    return this.toPublic(user);
+    return this.toPublic(this.toRecord(row));
   }
 
-  findRecordById(id: string): UserRecord {
-    const user = this.storage.users.get(id);
-    if (!user) {
+  async findRecordById(id: string): Promise<UserRecord> {
+    const row = await this.prisma.user.findUnique({ where: { id } });
+    if (!row) {
       throw new NotFoundException();
     }
-    return user;
+    return this.toRecord(row);
   }
 
   async create(dto: CreateUserDto): Promise<PublicUser> {
-    if (this.storage.findUserByLogin(dto.login)) {
+    const exists = await this.prisma.user.findUnique({
+      where: { login: dto.login },
+    });
+    if (exists) {
       throw new ConflictException();
     }
-    const now = Date.now();
     const role = dto.role ?? UserRole.VIEWER;
     const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds());
-    const user: UserRecord = {
-      id: randomUUID(),
-      login: dto.login,
-      passwordHash,
-      role,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.storage.users.set(user.id, user);
-    return this.toPublic(user);
+    const row = await this.prisma.user.create({
+      data: {
+        login: dto.login,
+        password: passwordHash,
+        role: toPrismaUserRole(role),
+      },
+    });
+    return this.toPublic(this.toRecord(row));
   }
 
   async validatePassword(user: UserRecord, plain: string): Promise<boolean> {
@@ -78,22 +92,44 @@ export class UsersService {
     id: string,
     dto: UpdatePasswordDto,
   ): Promise<PublicUser> {
-    const user = this.findRecordById(id);
+    const user = await this.findRecordById(id);
     const ok = await this.validatePassword(user, dto.oldPassword);
     if (!ok) {
       throw new ForbiddenException();
     }
-    user.passwordHash = await bcrypt.hash(dto.newPassword, this.bcryptRounds());
-    user.updatedAt = Date.now();
-    return this.toPublic(user);
+    const password = await bcrypt.hash(dto.newPassword, this.bcryptRounds());
+    const row = await this.prisma.user.update({
+      where: { id },
+      data: { password },
+    });
+    return this.toPublic(this.toRecord(row));
   }
 
-  remove(id: string): void {
-    if (!this.storage.users.has(id)) {
+  async remove(id: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
       throw new NotFoundException();
     }
-    this.storage.nullifyArticleAuthor(id);
-    this.storage.deleteCommentsByAuthor(id);
-    this.storage.users.delete(id);
+
+    await this.prisma.$transaction([
+      this.prisma.article.updateMany({
+        where: { authorId: id },
+        data: { authorId: null },
+      }),
+      this.prisma.comment.deleteMany({ where: { authorId: id } }),
+      this.prisma.user.delete({ where: { id } }),
+    ]);
+  }
+
+  async updateRole(id: string, role: UserRole): Promise<PublicUser> {
+    try {
+      const row = await this.prisma.user.update({
+        where: { id },
+        data: { role: toPrismaUserRole(role) },
+      });
+      return this.toPublic(this.toRecord(row));
+    } catch {
+      throw new NotFoundException();
+    }
   }
 }
