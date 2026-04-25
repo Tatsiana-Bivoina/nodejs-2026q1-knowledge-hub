@@ -109,4 +109,20 @@ describe('CommentsService', () => {
     prisma.comment.delete.mockRejectedValue(new Error('missing'));
     await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
   });
+
+  it('findOne returns mapped comment', async () => {
+    prisma.comment.findUnique.mockResolvedValue(commentRow());
+    const result = await service.findOne('cm1');
+    expect(result.id).toBe('cm1');
+  });
+
+  it('findAuthorId returns author id for existing comment', async () => {
+    prisma.comment.findUnique.mockResolvedValue({ authorId: 'u1' });
+    await expect(service.findAuthorId('cm1')).resolves.toBe('u1');
+  });
+
+  it('remove succeeds for existing comment', async () => {
+    prisma.comment.delete.mockResolvedValue({});
+    await expect(service.remove('cm1')).resolves.toBeUndefined();
+  });
 });

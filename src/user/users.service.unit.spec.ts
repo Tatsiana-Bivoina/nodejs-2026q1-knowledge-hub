@@ -45,6 +45,7 @@ describe('UsersService', () => {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
     };
     article: { updateMany: ReturnType<typeof vi.fn> };
     comment: { deleteMany: ReturnType<typeof vi.fn> };
@@ -57,6 +58,7 @@ describe('UsersService', () => {
         findUnique: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        delete: vi.fn(),
       },
       article: { updateMany: vi.fn() },
       comment: { deleteMany: vi.fn() },
@@ -144,5 +146,32 @@ describe('UsersService', () => {
     await expect(service.updateRole('missing', UserRole.ADMIN)).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it('findById throws NotFoundException when user missing', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    await expect(service.findById('missing')).rejects.toThrow(NotFoundException);
+  });
+
+  it('remove runs transaction for existing user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow());
+    prismaMock.article.updateMany.mockResolvedValue({});
+    prismaMock.comment.deleteMany.mockResolvedValue({});
+    prismaMock.user.delete.mockResolvedValue({});
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    await service.remove('u-1');
+
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('updateRole returns updated user', async () => {
+    prismaMock.user.update.mockResolvedValue(
+      makeRow({ role: PrismaUserRole.ADMIN }),
+    );
+
+    const result = await service.updateRole('u-1', UserRole.ADMIN);
+
+    expect(result.role).toBe(UserRole.ADMIN);
   });
 });

@@ -87,4 +87,23 @@ describe('CategoriesService', () => {
     prisma.category.delete.mockRejectedValue(new Error('missing'));
     await expect(service.remove('c1')).rejects.toThrow(NotFoundException);
   });
+
+  it('findOne returns mapped category', async () => {
+    prisma.category.findUnique.mockResolvedValue(categoryRow());
+    const result = await service.findOne('c1');
+    expect(result.id).toBe('c1');
+  });
+
+  it('update returns updated category', async () => {
+    prisma.category.update.mockResolvedValue(
+      categoryRow({ name: 'Updated', description: 'D2' }),
+    );
+    const result = await service.update('c1', { name: 'Updated' });
+    expect(result.name).toBe('Updated');
+  });
+
+  it('remove succeeds for existing category', async () => {
+    prisma.category.delete.mockResolvedValue({});
+    await expect(service.remove('c1')).resolves.toBeUndefined();
+  });
 });

@@ -130,4 +130,51 @@ describe('ArticlesService', () => {
     prisma.article.delete.mockRejectedValue(new Error('missing'));
     await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
   });
+
+  it('findAuthorId throws NotFoundException for unknown article', async () => {
+    prisma.article.findUnique.mockResolvedValue(null);
+    await expect(service.findAuthorId('missing')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('update writes tag set when tags are provided', async () => {
+    prisma.article.findUnique.mockResolvedValueOnce(articleRow());
+    prisma.user.findUnique.mockResolvedValue({ id: 'u1' });
+    prisma.category.findUnique.mockResolvedValue({ id: 'c1' });
+    prisma.tag.upsert.mockResolvedValueOnce({ id: 't1' }).mockResolvedValueOnce({
+      id: 't2',
+    });
+    prisma.article.update.mockResolvedValue(
+      articleRow({ tags: [{ id: 't1', name: 'a' }, { id: 't2', name: 'b' }] }),
+    );
+
+    const result = await service.update('a1', {
+      tags: ['a', 'b'],
+      status: ArticleStatus.PUBLISHED,
+    });
+
+    expect(prisma.tag.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.article.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'a1' },
+        data: expect.objectContaining({
+          tags: { set: [{ id: 't1' }, { id: 't2' }] },
+        }),
+      }),
+    );
+    expect(result.tags).toEqual(['a', 'b']);
+  });
+
+  it('update throws BadRequestException when next category is invalid', async () => {
+    prisma.article.findUnique.mockResolvedValueOnce(articleRow());
+    prisma.user.findUnique.mockResolvedValue({ id: 'u1' });
+    prisma.category.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.update('a1', {
+        categoryId: 'missing-category',
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
 });
