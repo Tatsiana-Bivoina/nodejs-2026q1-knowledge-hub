@@ -1,12 +1,11 @@
 import {
   ConflictException,
-  ForbiddenException,
-  NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import * as bcrypt from 'bcrypt';
 import { UserRole as PrismaUserRole } from '@prisma/client';
+import { ForbiddenError, NotFoundError } from '../common/errors/http-errors';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from './users.service';
@@ -121,7 +120,7 @@ describe('UsersService', () => {
         oldPassword: 'wrong',
         newPassword: 'new-secret',
       }),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenError);
   });
 
   it('updates password when old password is valid', async () => {
@@ -146,13 +145,13 @@ describe('UsersService', () => {
     prismaMock.user.update.mockRejectedValue(new Error('missing'));
 
     await expect(service.updateRole('missing', UserRole.ADMIN)).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 
   it('findById throws NotFoundException when user missing', async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
-    await expect(service.findById('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.findById('missing')).rejects.toThrow(NotFoundError);
   });
 
   it('remove runs transaction for existing user', async () => {
@@ -199,6 +198,6 @@ describe('UsersService', () => {
 
   it('remove throws NotFoundException for missing user', async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
-    await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.remove('missing')).rejects.toThrow(NotFoundError);
   });
 });

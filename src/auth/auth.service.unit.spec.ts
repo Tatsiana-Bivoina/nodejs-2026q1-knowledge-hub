@@ -1,7 +1,10 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  ForbiddenError,
+  UnauthorizedError,
+} from '../common/errors/http-errors';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../user/users.service';
@@ -83,7 +86,7 @@ describe('AuthService', () => {
 
     await expect(
       service.login({ login: 'missing', password: 'p' }),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(ForbiddenError);
   });
 
   it('login signs tokens for valid credentials', async () => {
@@ -102,7 +105,7 @@ describe('AuthService', () => {
 
   it('refresh throws UnauthorizedException when token is empty', async () => {
     await expect(service.refresh({ refreshToken: '' })).rejects.toThrow(
-      UnauthorizedException,
+      UnauthorizedError,
     );
   });
 
@@ -110,7 +113,7 @@ describe('AuthService', () => {
     prisma.revokedRefreshToken.findUnique.mockResolvedValue({ token: 'revoked' });
 
     await expect(service.refresh({ refreshToken: 'revoked' })).rejects.toThrow(
-      ForbiddenException,
+      ForbiddenError,
     );
   });
 
@@ -140,7 +143,7 @@ describe('AuthService', () => {
     jwtService.verifyAsync.mockRejectedValue(new Error('jwt expired'));
 
     await expect(service.refresh({ refreshToken: 'broken' })).rejects.toThrow(
-      ForbiddenException,
+      ForbiddenError,
     );
   });
 

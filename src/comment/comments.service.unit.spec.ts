@@ -1,10 +1,9 @@
 import {
-  BadRequestException,
-  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NotFoundError, ValidationError } from '../common/errors/http-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommentsService } from './comments.service';
 
@@ -71,7 +70,7 @@ describe('CommentsService', () => {
   it('findAuthorId throws for missing comment', async () => {
     prisma.comment.findUnique.mockResolvedValue(null);
     await expect(service.findAuthorId('missing')).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 
@@ -87,7 +86,7 @@ describe('CommentsService', () => {
     prisma.user.findUnique.mockResolvedValue(null);
     await expect(
       service.create({ content: 'C', articleId: 'a1', authorId: 'missing' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ValidationError);
   });
 
   it('create persists comment when dependencies are valid', async () => {
@@ -107,7 +106,7 @@ describe('CommentsService', () => {
 
   it('remove maps prisma error to NotFoundException', async () => {
     prisma.comment.delete.mockRejectedValue(new Error('missing'));
-    await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.remove('missing')).rejects.toThrow(NotFoundError);
   });
 
   it('findOne returns mapped comment', async () => {

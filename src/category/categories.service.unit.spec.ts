@@ -1,6 +1,6 @@
-import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NotFoundError } from '../common/errors/http-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoriesService } from './categories.service';
 
@@ -62,7 +62,7 @@ describe('CategoriesService', () => {
 
   it('findOne throws when category not found', async () => {
     prisma.category.findUnique.mockResolvedValue(null);
-    await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.findOne('missing')).rejects.toThrow(NotFoundError);
   });
 
   it('create persists category', async () => {
@@ -79,13 +79,13 @@ describe('CategoriesService', () => {
   it('update maps prisma errors to NotFoundException', async () => {
     prisma.category.update.mockRejectedValue(new Error('missing'));
     await expect(service.update('c1', { name: 'X' })).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 
   it('remove maps prisma errors to NotFoundException', async () => {
     prisma.category.delete.mockRejectedValue(new Error('missing'));
-    await expect(service.remove('c1')).rejects.toThrow(NotFoundException);
+    await expect(service.remove('c1')).rejects.toThrow(NotFoundError);
   });
 
   it('findOne returns mapped category', async () => {

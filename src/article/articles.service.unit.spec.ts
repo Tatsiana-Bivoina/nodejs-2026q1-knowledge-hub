@@ -1,8 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ArticleStatus as PrismaArticleStatus } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArticleStatus } from '../common/enums/article-status.enum';
+import { NotFoundError, ValidationError } from '../common/errors/http-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { ArticlesService } from './articles.service';
 
@@ -96,7 +96,7 @@ describe('ArticlesService', () => {
 
   it('findOne throws NotFoundException for missing article', async () => {
     prisma.article.findUnique.mockResolvedValue(null);
-    await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.findOne('missing')).rejects.toThrow(NotFoundError);
   });
 
   it('create throws BadRequestException when author does not exist', async () => {
@@ -109,7 +109,7 @@ describe('ArticlesService', () => {
         authorId: 'missing',
         categoryId: null,
       }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ValidationError);
   });
 
   it('create persists tags via connectOrCreate', async () => {
@@ -133,19 +133,19 @@ describe('ArticlesService', () => {
   it('update throws NotFoundException when current article missing', async () => {
     prisma.article.findUnique.mockResolvedValue(null);
     await expect(service.update('a1', { title: 'N' })).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 
   it('remove maps prisma failure to NotFoundException', async () => {
     prisma.article.delete.mockRejectedValue(new Error('missing'));
-    await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.remove('missing')).rejects.toThrow(NotFoundError);
   });
 
   it('findAuthorId throws NotFoundException for unknown article', async () => {
     prisma.article.findUnique.mockResolvedValue(null);
     await expect(service.findAuthorId('missing')).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
   });
 
@@ -192,7 +192,7 @@ describe('ArticlesService', () => {
       service.update('a1', {
         categoryId: 'missing-category',
       }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ValidationError);
   });
 
   it('update disconnects author and category when null is passed', async () => {
