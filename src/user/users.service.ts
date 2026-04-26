@@ -1,11 +1,13 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { User as PrismaUser } from '@prisma/client';
+import {
+  ForbiddenError,
+  NotFoundError,
+} from '../common/errors/http-errors';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { toApiUserRole, toPrismaUserRole } from '../database/prisma-enums';
@@ -52,7 +54,7 @@ export class UsersService {
   async findById(id: string): Promise<PublicUser> {
     const row = await this.prisma.user.findUnique({ where: { id } });
     if (!row) {
-      throw new NotFoundException();
+      throw new NotFoundError('User not found');
     }
     return this.toPublic(this.toRecord(row));
   }
@@ -60,7 +62,7 @@ export class UsersService {
   async findRecordById(id: string): Promise<UserRecord> {
     const row = await this.prisma.user.findUnique({ where: { id } });
     if (!row) {
-      throw new NotFoundException();
+      throw new NotFoundError('User not found');
     }
     return this.toRecord(row);
   }
@@ -95,7 +97,7 @@ export class UsersService {
     const user = await this.findRecordById(id);
     const ok = await this.validatePassword(user, dto.oldPassword);
     if (!ok) {
-      throw new ForbiddenException();
+      throw new ForbiddenError('Old password is invalid');
     }
     const password = await bcrypt.hash(dto.newPassword, this.bcryptRounds());
     const row = await this.prisma.user.update({
@@ -108,7 +110,7 @@ export class UsersService {
   async remove(id: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException();
+      throw new NotFoundError('User not found');
     }
 
     await this.prisma.$transaction([
@@ -129,7 +131,7 @@ export class UsersService {
       });
       return this.toPublic(this.toRecord(row));
     } catch {
-      throw new NotFoundException();
+      throw new NotFoundError('User not found');
     }
   }
 }

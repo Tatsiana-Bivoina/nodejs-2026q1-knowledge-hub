@@ -1,7 +1,5 @@
 import {
-  ForbiddenException,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +10,10 @@ import { RefreshDto } from './dto/refresh.dto';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PublicUser } from '../user/users.service';
 import { LogoutDto } from './dto/logout.dto';
+import {
+  ForbiddenError,
+  UnauthorizedError,
+} from '../common/errors/http-errors';
 
 type JwtPayload = {
   userId: string;
@@ -70,12 +72,12 @@ export class AuthService {
     const all = await this.usersService.findAll();
     const user = all.find((u) => u.login === dto.login);
     if (!user) {
-      throw new ForbiddenException();
+      throw new ForbiddenError('Invalid credentials');
     }
     const record = await this.usersService.findRecordById(user.id);
     const ok = await this.usersService.validatePassword(record, dto.password);
     if (!ok) {
-      throw new ForbiddenException();
+      throw new ForbiddenError('Invalid credentials');
     }
     const payload: JwtPayload = {
       userId: user.id,
@@ -88,14 +90,14 @@ export class AuthService {
 
   async refresh(dto: RefreshDto): Promise<AuthTokens> {
     if (!dto.refreshToken) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedError('Refresh token is required');
     }
     try {
       const isRevoked = await this.prisma.revokedRefreshToken.findUnique({
         where: { token: dto.refreshToken },
       });
       if (isRevoked) {
-        throw new ForbiddenException();
+        throw new ForbiddenError('Refresh token is revoked');
       }
 
       const decoded = await this.jwtService.verifyAsync<JwtPayload>(
@@ -112,7 +114,7 @@ export class AuthService {
       };
       return this.signTokens(payload);
     } catch {
-      throw new ForbiddenException();
+      throw new ForbiddenError('Refresh token is invalid or expired');
     }
   }
 
@@ -126,7 +128,7 @@ export class AuthService {
         },
       );
     } catch {
-      throw new ForbiddenException();
+      throw new ForbiddenError('Refresh token is invalid or expired');
     }
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

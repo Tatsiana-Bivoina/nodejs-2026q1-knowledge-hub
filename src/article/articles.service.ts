@@ -1,9 +1,11 @@
 import {
-  BadRequestException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import {
+  NotFoundError,
+  ValidationError,
+} from '../common/errors/http-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   toApiArticleStatus,
@@ -43,7 +45,7 @@ export class ArticlesService {
         where: { id: authorId },
       });
       if (!user) {
-        throw new BadRequestException();
+        throw new ValidationError('Author does not exist');
       }
     }
   }
@@ -56,7 +58,7 @@ export class ArticlesService {
         where: { id: categoryId },
       });
       if (!category) {
-        throw new BadRequestException();
+        throw new ValidationError('Category does not exist');
       }
     }
   }
@@ -87,7 +89,7 @@ export class ArticlesService {
       include: { tags: true },
     });
     if (!row) {
-      throw new NotFoundException();
+      throw new NotFoundError('Article not found');
     }
     return this.toRecord(row);
   }
@@ -98,7 +100,7 @@ export class ArticlesService {
       select: { authorId: true },
     });
     if (!row) {
-      throw new NotFoundException();
+      throw new NotFoundError('Article not found');
     }
     return row.authorId;
   }
@@ -137,7 +139,7 @@ export class ArticlesService {
       include: { tags: true },
     });
     if (!current) {
-      throw new NotFoundException();
+      throw new NotFoundError('Article not found');
     }
     const nextAuthor =
       dto.authorId !== undefined ? dto.authorId : current.authorId;
@@ -191,7 +193,7 @@ export class ArticlesService {
     try {
       await this.prisma.article.delete({ where: { id } });
     } catch {
-      throw new NotFoundException();
+      throw new NotFoundError('Article not found');
     }
   }
 }

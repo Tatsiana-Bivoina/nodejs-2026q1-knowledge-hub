@@ -1,10 +1,12 @@
 import {
-  BadRequestException,
   Injectable,
-  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  NotFoundError,
+  ValidationError,
+} from '../common/errors/http-errors';
 import { CommentRecord } from '../database/storage.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
@@ -38,7 +40,7 @@ export class CommentsService {
   async findOne(id: string): Promise<CommentRecord> {
     const row = await this.prisma.comment.findUnique({ where: { id } });
     if (!row) {
-      throw new NotFoundException('Comment not found');
+      throw new NotFoundError('Comment not found');
     }
     return this.toRecord(row);
   }
@@ -49,7 +51,7 @@ export class CommentsService {
       select: { authorId: true },
     });
     if (!row) {
-      throw new NotFoundException('Comment not found');
+      throw new NotFoundError('Comment not found');
     }
     return row.authorId;
   }
@@ -67,7 +69,7 @@ export class CommentsService {
         where: { id: authorId },
       });
       if (!user) {
-        throw new BadRequestException();
+        throw new ValidationError('Author does not exist');
       }
     }
     const row = await this.prisma.comment.create({
@@ -84,7 +86,7 @@ export class CommentsService {
     try {
       await this.prisma.comment.delete({ where: { id } });
     } catch {
-      throw new NotFoundException('Comment not found');
+      throw new NotFoundError('Comment not found');
     }
   }
 }
