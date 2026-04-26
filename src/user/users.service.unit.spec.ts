@@ -1,0 +1,203 @@
+import {
+  ConflictException,
+} from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import * as bcrypt from 'bcrypt';
+import { UserRole as PrismaUserRole } from '@prisma/client';
+import { ForbiddenError, NotFoundError } from '../common/errors/http-errors';
+import { UserRole } from '../common/enums/user-role.enum';
+import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from './users.service';
+
+vi.mock('bcrypt', () => ({
+  hash: vi.fn(),
+  compare: vi.fn(),
+}));
+
+const bcryptHashMock = bcrypt.hash as unknown as Mock;
+const bcryptCompareMock = bcrypt.compare as unknown as Mock;
+
+type UserRow = {
+  id: string;
+  login: string;
+  password: string;
+  role: PrismaUserRole;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const makeRow = (overrides: Partial<UserRow> = {}): UserRow => ({
+  id: 'u-1',
+  login: 'john',
+  password: 'hash',
+  role: PrismaUserRole.VIEWER,
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  ...overrides,
+});
+
+describe('UsersService', () => {
+  let service: UsersService;
+  let prismaMock: {
+    user: {
+      findMany: ReturnType<typeof vi.fn>;
+      findUnique: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+    };
+    article: { updateMany: ReturnType<typeof vi.fn> };
+    comment: { deleteMany: ReturnType<typeof vi.fn> };
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(async () => {
+    prismaMock = {
+      user: {
+        findMany: vi.fn(),
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      },
+      article: { updateMany: vi.fn() },
+      comment: { deleteMany: vi.fn() },
+      $transaction: vi.fn(),
+    };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        {
+          provide: PrismaService,
+          useValue: prismaMock,
+        },
+        {
+          provide: UsersService,
+          useFactory: (prisma: PrismaService) => new UsersService(prisma),
+          inject: [PrismaService],
+        },
+      ],
+    }).compile();
+
+    service = moduleRef.get(UsersService);
+    process.env.CRYPT_SALT = '10';
+  });
+
+  it('creates user with viewer role by default', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    bcryptHashMock.mockResolvedValue('hashed');
+    prismaMock.user.create.mockResolvedValue(
+      makeRow({ password: 'hashed', role: PrismaUserRole.VIEWER }),
+    );
+
+    const result = await service.create({ login: 'john', password: 'secret' });
+
+    expect(result).toMatchObject({ login: 'john', role: UserRole.VIEWER });
+    expect(prismaMock.user.create).toHaveBeenCalledWith({
+      data: {
+        login: 'john',
+        password: 'hashed',
+        role: PrismaUserRole.VIEWER,
+      },
+    });
+  });
+
+  it('throws ConflictException when login exists', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow());
+
+    await expect(
+      service.create({ login: 'john', password: 'secret' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('throws ForbiddenException on wrong old password', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'stored' }));
+    bcryptCompareMock.mockResolvedValue(false);
+
+    await expect(
+      service.updatePassword('u-1', {
+        oldPassword: 'wrong',
+        newPassword: 'new-secret',
+      }),
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('updates password when old password is valid', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'stored' }));
+    bcryptCompareMock.mockResolvedValue(true);
+    bcryptHashMock.mockResolvedValue('new-hash');
+    prismaMock.user.update.mockResolvedValue(makeRow({ password: 'new-hash' }));
+
+    const result = await service.updatePassword('u-1', {
+      oldPassword: 'old',
+      newPassword: 'new',
+    });
+
+    expect(result.id).toBe('u-1');
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: 'u-1' },
+      data: { password: 'new-hash' },
+    });
+  });
+
+  it('throws NotFoundException when updateRole target missing', async () => {
+    prismaMock.user.update.mockRejectedValue(new Error('missing'));
+
+    await expect(service.updateRole('missing', UserRole.ADMIN)).rejects.toThrow(
+      NotFoundError,
+    );
+  });
+
+  it('findById throws NotFoundException when user missing', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    await expect(service.findById('missing')).rejects.toThrow(NotFoundError);
+  });
+
+  it('remove runs transaction for existing user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow());
+    prismaMock.article.updateMany.mockResolvedValue({});
+    prismaMock.comment.deleteMany.mockResolvedValue({});
+    prismaMock.user.delete.mockResolvedValue({});
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    await service.remove('u-1');
+
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+
+  it('updateRole returns updated user', async () => {
+    prismaMock.user.update.mockResolvedValue(
+      makeRow({ role: PrismaUserRole.ADMIN }),
+    );
+
+    const result = await service.updateRole('u-1', UserRole.ADMIN);
+
+    expect(result.role).toBe(UserRole.ADMIN);
+  });
+
+  it('findAll returns mapped public users', async () => {
+    prismaMock.user.findMany = vi
+      .fn()
+      .mockResolvedValue([makeRow({ role: PrismaUserRole.EDITOR })]);
+
+    const result = await service.findAll();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe(UserRole.EDITOR);
+  });
+
+  it('findRecordById returns full user record for existing user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'pw-hash' }));
+
+    const result = await service.findRecordById('u-1');
+
+    expect(result.passwordHash).toBe('pw-hash');
+    expect(result.login).toBe('john');
+  });
+
+  it('remove throws NotFoundException for missing user', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    await expect(service.remove('missing')).rejects.toThrow(NotFoundError);
+  });
+});

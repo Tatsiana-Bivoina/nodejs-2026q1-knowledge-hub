@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -37,6 +38,7 @@ const CATEGORY_SORT_KEYS: readonly (keyof CategoryRecord)[] = [
 ];
 
 @ApiTags('category')
+@ApiBearerAuth('access-token')
 @Controller('category')
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
@@ -50,10 +52,10 @@ export class CategoriesController {
     description:
       'Array of categories, or { total, page, limit, data } with ?page=&limit=',
   })
-  findAll(@Query() query: PaginationQueryDto) {
+  async findAll(@Query() query: PaginationQueryDto) {
     const { page, limit, sortBy, order } = query;
     const list = applySorting(
-      this.categoriesService.findAll(),
+      await this.categoriesService.findAll(),
       sortBy,
       order,
       CATEGORY_SORT_KEYS,
@@ -163,7 +165,7 @@ export class CategoriesController {
       },
     },
   })
-  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    this.categoriesService.remove(id);
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.categoriesService.remove(id);
   }
 }

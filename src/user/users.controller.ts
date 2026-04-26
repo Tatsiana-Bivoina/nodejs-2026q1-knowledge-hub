@@ -7,11 +7,13 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -27,6 +29,7 @@ import type { PublicUser } from './users.service';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 const USER_SORT_KEYS: readonly (keyof PublicUser)[] = [
   'id',
@@ -37,6 +40,7 @@ const USER_SORT_KEYS: readonly (keyof PublicUser)[] = [
 ];
 
 @ApiTags('user')
+@ApiBearerAuth('access-token')
 @Controller('user')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -49,10 +53,10 @@ export class UsersController {
     description:
       'Array of users (no password), or { total, page, limit, data } with ?page=&limit=',
   })
-  findAll(@Query() query: PaginationQueryDto) {
+  async findAll(@Query() query: PaginationQueryDto) {
     const { page, limit, sortBy, order } = query;
     const list = applySorting(
-      this.usersService.findAll(),
+      await this.usersService.findAll(),
       sortBy,
       order,
       USER_SORT_KEYS,
@@ -160,6 +164,43 @@ export class UsersController {
     return this.usersService.updatePassword(id, dto);
   }
 
+  @Patch(':id/role')
+  @ApiOperation({ summary: 'Update user role (admin only)' })
+  @ApiOkResponse({ description: 'Updated user without password' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid UUID or invalid role',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(400, 'Bad Request'),
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'User not found',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(404, 'Not Found', 'User not found'),
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Only admin can update user role',
+    content: {
+      'application/json': {
+        schema: nestHttpExceptionSchema(403, 'Forbidden', 'Forbidden resource'),
+      },
+    },
+  })
+  updateRole(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateUserRoleDto,
+  ) {
+    return this.usersService.updateRole(id, dto.role);
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete user' })
@@ -186,7 +227,7 @@ export class UsersController {
       },
     },
   })
-  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    this.usersService.remove(id);
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.usersService.remove(id);
   }
 }
