@@ -34,6 +34,24 @@ export class ForbiddenError extends Error {
   }
 }
 
+export class InternalError extends Error {
+  readonly statusCode = 500;
+
+  constructor(message = 'Internal server error') {
+    super(message);
+    this.name = 'InternalError';
+  }
+}
+
+export class ServiceUnavailableError extends Error {
+  readonly statusCode = 503;
+
+  constructor(message = 'Service unavailable') {
+    super(message);
+    this.name = 'ServiceUnavailableError';
+  }
+}
+
 export function isCustomHttpError(error: unknown): error is {
   statusCode: number;
   message: string;

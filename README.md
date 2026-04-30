@@ -30,10 +30,38 @@ Main variables:
 - `POSTGRES_DB`
 - `POSTGRES_HOST=db`
 - `POSTGRES_PORT=5432`
+- `GEMINI_API_KEY=your-gemini-api-key`
+- `GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com`
+- `GEMINI_MODEL=gemini-2.0-flash`
+
+Optional proxy variables for Gemini (useful for region bypass with local Fiddler):
+
+- `AI_PROXY_HOST=127.0.0.1` (or `host.docker.internal` if app runs in Docker)
+- `AI_PROXY_PORT=8888`
+- `AI_PROXY_PROTOCOL=http`
 
 When app runs inside Docker Compose, `DATABASE_URL` is overridden in `docker-compose.yml` to use host `db`.
 
 If you use Docker PostgreSQL on `localhost:5432`, make sure local Postgres service (for example Postgres.app) is stopped, otherwise host and container DB can be mixed.
+
+## Gemini proxy quick setup (Fiddler)
+
+1. Start Fiddler and enable **Tools -> Options -> Connections -> Fiddler listens on port 8888**.
+2. Set proxy env vars in `.env`:
+
+```dotenv
+AI_PROXY_HOST=127.0.0.1
+AI_PROXY_PORT=8888
+AI_PROXY_PROTOCOL=http
+```
+
+3. Start the app and call:
+
+```bash
+GET http://localhost:4000/ai/test
+```
+
+If proxy is configured correctly, the endpoint returns Gemini-generated text.
 
 ## Installing NPM modules
 
