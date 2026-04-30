@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -18,6 +19,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthUser } from '../auth/types/auth-user.type';
+import { UserRole } from '../common/enums/user-role.enum';
 import { applyPagination } from '../common/pagination/paginated-result';
 import { applySorting } from '../common/pagination/apply-sorting';
 import { CommentRecord } from '../database/storage.service';
@@ -35,6 +39,7 @@ const COMMENT_SORT_KEYS: readonly (keyof CommentRecord)[] = [
 ];
 
 @ApiTags('comment')
+@ApiBearerAuth('access-token')
 @Controller('comment')
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
@@ -57,10 +62,10 @@ export class CommentsController {
       },
     },
   })
-  findByArticle(@Query() query: CommentArticleQueryDto) {
+  async findByArticle(@Query() query: CommentArticleQueryDto) {
     const { page, limit, sortBy, order, articleId } = query;
     const list = applySorting(
-      this.commentsService.findByArticle(articleId),
+      await this.commentsService.findByArticle(articleId),
       sortBy,
       order,
       COMMENT_SORT_KEYS,
@@ -123,7 +128,10 @@ export class CommentsController {
       },
     },
   })
-  create(@Body() dto: CreateCommentDto) {
+  create(@Body() dto: CreateCommentDto, @CurrentUser() user?: AuthUser) {
+    if (user?.role === UserRole.EDITOR) {
+      dto.authorId = user.sub;
+    }
     return this.commentsService.create(dto);
   }
 
@@ -153,7 +161,7 @@ export class CommentsController {
       },
     },
   })
-  remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    this.commentsService.remove(id);
+  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    await this.commentsService.remove(id);
   }
 }

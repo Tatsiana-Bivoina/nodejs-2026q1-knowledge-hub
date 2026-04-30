@@ -1,55 +1,72 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { StorageService, CategoryRecord } from '../database/storage.service';
+import { Injectable } from '@nestjs/common';
+import { NotFoundError } from '../common/errors/http-errors';
+import { PrismaService } from '../prisma/prisma.service';
+import { CategoryRecord } from '../database/storage.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly storage: StorageService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  findAll(): CategoryRecord[] {
-    return [...this.storage.categories.values()];
-  }
-
-  findOne(id: string): CategoryRecord {
-    const category = this.storage.categories.get(id);
-    if (!category) {
-      throw new NotFoundException('Category not found');
-    }
-    return category;
-  }
-
-  create(dto: CreateCategoryDto): CategoryRecord {
-    const now = Date.now();
-    const category: CategoryRecord = {
-      id: randomUUID(),
-      name: dto.name,
-      description: dto.description,
-      createdAt: now,
-      updatedAt: now,
+  private toRecord(row: {
+    id: string;
+    name: string;
+    description: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): CategoryRecord {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      createdAt: row.createdAt.getTime(),
+      updatedAt: row.updatedAt.getTime(),
     };
-    this.storage.categories.set(category.id, category);
-    return category;
   }
 
-  update(id: string, dto: UpdateCategoryDto): CategoryRecord {
-    const category = this.findOne(id);
-    if (dto.name !== undefined) {
-      category.name = dto.name;
-    }
-    if (dto.description !== undefined) {
-      category.description = dto.description;
-    }
-    category.updatedAt = Date.now();
-    return category;
+  async findAll(): Promise<CategoryRecord[]> {
+    const rows = await this.prisma.category.findMany();
+    return rows.map((r) => this.toRecord(r));
   }
 
-  remove(id: string): void {
-    if (!this.storage.categories.has(id)) {
-      throw new NotFoundException('Category not found');
+  async findOne(id: string): Promise<CategoryRecord> {
+    const row = await this.prisma.category.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundError('Category not found');
     }
-    this.storage.nullifyArticleCategory(id);
-    this.storage.categories.delete(id);
+    return this.toRecord(row);
+  }
+
+  async create(dto: CreateCategoryDto): Promise<CategoryRecord> {
+    const row = await this.prisma.category.create({
+      data: { name: dto.name, description: dto.description },
+    });
+    return this.toRecord(row);
+  }
+
+  async update(id: string, dto: UpdateCategoryDto): Promise<CategoryRecord> {
+    try {
+      const row = await this.prisma.category.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.description !== undefined
+            ? { description: dto.description }
+            : {}),
+        },
+      });
+      return this.toRecord(row);
+    } catch {
+      throw new NotFoundError('Category not found');
+    }
+  }
+
+  async remove(id: string): Promise<void> {
+    try {
+      await this.prisma.category.delete({ where: { id } });
+    } catch {
+      throw new NotFoundError('Category not found');
+    }
   }
 }
