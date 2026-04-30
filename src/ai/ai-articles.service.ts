@@ -19,8 +19,16 @@ type AnalyzePayload = {
   severity: AnalyzeSeverity;
 };
 
+type CacheEntry<T> = {
+  expiresAt: number;
+  payload: T;
+};
+
 @Injectable()
 export class AiArticlesService {
+  private readonly cache = new Map<string, CacheEntry<unknown>>();
+  private readonly cacheTtlMs = this.resolveCacheTtlMs();
+
   constructor(
     private readonly articlesService: ArticlesService,
     private readonly geminiService: GeminiService,
@@ -29,6 +37,19 @@ export class AiArticlesService {
   async summarize(articleId: string, dto: SummarizeArticleDto) {
     const article = await this.articlesService.findOne(articleId);
     const maxLength: SummaryLength = dto.maxLength || 'medium';
+    const cacheKey = this.buildCacheKey('summarize', article.id, {
+      maxLength,
+      updatedAt: article.updatedAt,
+    });
+    const cached = this.readCache<{
+      articleId: string;
+      summary: string;
+      originalLength: number;
+      summaryLength: number;
+    }>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const prompt = buildSummarizePrompt(
       article.title,
       article.content,
@@ -36,16 +57,31 @@ export class AiArticlesService {
     );
     const summary = await this.geminiService.generate(prompt);
 
-    return {
+    const response = {
       articleId,
       summary,
       originalLength: article.content.length,
       summaryLength: summary.length,
     };
+    this.writeCache(cacheKey, response);
+    return response;
   }
 
   async translate(articleId: string, dto: TranslateArticleDto) {
     const article = await this.articlesService.findOne(articleId);
+    const cacheKey = this.buildCacheKey('translate', article.id, {
+      targetLanguage: dto.targetLanguage,
+      sourceLanguage: dto.sourceLanguage || null,
+      updatedAt: article.updatedAt,
+    });
+    const cached = this.readCache<{
+      articleId: string;
+      translatedText: string;
+      detectedLanguage: string;
+    }>(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const prompt = buildTranslatePrompt(
       article.title,
       article.content,
@@ -55,7 +91,7 @@ export class AiArticlesService {
     const raw = await this.geminiService.generate(prompt);
     const parsed = this.parseJson(raw);
 
-    return {
+    const response = {
       articleId,
       translatedText:
         typeof parsed.translatedText === 'string' ? parsed.translatedText : raw,
@@ -64,6 +100,8 @@ export class AiArticlesService {
           ? parsed.detectedLanguage
           : dto.sourceLanguage || 'unknown',
     };
+    this.writeCache(cacheKey, response);
+    return response;
   }
 
   async analyze(
@@ -126,5 +164,39 @@ export class AiArticlesService {
         return {};
       }
     }
+  }
+
+  private resolveCacheTtlMs(): number {
+    const raw = process.env.AI_CACHE_TTL_SEC || '300';
+    const ttlSec = Number.parseInt(raw, 10);
+    const normalized = Number.isFinite(ttlSec) && ttlSec > 0 ? ttlSec : 300;
+    return normalized * 1000;
+  }
+
+  private buildCacheKey(
+    operation: 'summarize' | 'translate',
+    articleId: string,
+    params: Record<string, unknown>,
+  ): string {
+    return `${operation}:${articleId}:${JSON.stringify(params)}`;
+  }
+
+  private readCache<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.cache.delete(key);
+      return null;
+    }
+    return entry.payload as T;
+  }
+
+  private writeCache<T>(key: string, payload: T): void {
+    this.cache.set(key, {
+      expiresAt: Date.now() + this.cacheTtlMs,
+      payload,
+    });
   }
 }

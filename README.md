@@ -33,6 +33,7 @@ Main variables:
 - `GEMINI_API_KEY=your-gemini-api-key`
 - `GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com`
 - `GEMINI_MODEL=gemini-2.0-flash`
+- `AI_CACHE_TTL_SEC=300` (in-memory cache TTL for AI summarize/translate responses)
 
 Optional proxy variables for Gemini (useful for region bypass with local Fiddler):
 
