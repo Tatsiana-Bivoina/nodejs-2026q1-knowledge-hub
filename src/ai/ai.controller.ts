@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AiArticlesService } from './ai-articles.service';
 import { AnalyzeArticleDto } from './dto/analyze-article.dto';
 import { AiArticleIdParamDto } from './dto/ai-article-id-param.dto';
@@ -8,6 +8,7 @@ import { TranslateArticleDto } from './dto/translate-article.dto';
 import { GeminiService } from './gemini.service';
 
 @ApiTags('ai')
+@ApiBearerAuth('access-token')
 @Controller('ai')
 export class AiController {
   constructor(
