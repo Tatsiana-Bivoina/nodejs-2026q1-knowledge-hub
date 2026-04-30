@@ -1,6 +1,4 @@
-import {
-  ConflictException,
-} from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import * as bcrypt from 'bcrypt';
@@ -112,7 +110,9 @@ describe('UsersService', () => {
   });
 
   it('throws ForbiddenException on wrong old password', async () => {
-    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'stored' }));
+    prismaMock.user.findUnique.mockResolvedValue(
+      makeRow({ password: 'stored' }),
+    );
     bcryptCompareMock.mockResolvedValue(false);
 
     await expect(
@@ -124,7 +124,9 @@ describe('UsersService', () => {
   });
 
   it('updates password when old password is valid', async () => {
-    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'stored' }));
+    prismaMock.user.findUnique.mockResolvedValue(
+      makeRow({ password: 'stored' }),
+    );
     bcryptCompareMock.mockResolvedValue(true);
     bcryptHashMock.mockResolvedValue('new-hash');
     prismaMock.user.update.mockResolvedValue(makeRow({ password: 'new-hash' }));
@@ -188,7 +190,9 @@ describe('UsersService', () => {
   });
 
   it('findRecordById returns full user record for existing user', async () => {
-    prismaMock.user.findUnique.mockResolvedValue(makeRow({ password: 'pw-hash' }));
+    prismaMock.user.findUnique.mockResolvedValue(
+      makeRow({ password: 'pw-hash' }),
+    );
 
     const result = await service.findRecordById('u-1');
 

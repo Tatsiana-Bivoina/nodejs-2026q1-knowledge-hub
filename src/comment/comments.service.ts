@@ -1,12 +1,6 @@
-import {
-  Injectable,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  NotFoundError,
-  ValidationError,
-} from '../common/errors/http-errors';
+import { NotFoundError, ValidationError } from '../common/errors/http-errors';
 import { CommentRecord } from '../database/storage.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 

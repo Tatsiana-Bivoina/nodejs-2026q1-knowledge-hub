@@ -93,9 +93,14 @@ describe('AuthService', () => {
     usersService.findAll.mockResolvedValue([
       { id: 'u1', login: 'john', role: UserRole.EDITOR },
     ]);
-    usersService.findRecordById.mockResolvedValue({ id: 'u1', passwordHash: 'h' });
+    usersService.findRecordById.mockResolvedValue({
+      id: 'u1',
+      passwordHash: 'h',
+    });
     usersService.validatePassword.mockResolvedValue(true);
-    jwtService.signAsync.mockResolvedValueOnce('access').mockResolvedValueOnce('refresh');
+    jwtService.signAsync
+      .mockResolvedValueOnce('access')
+      .mockResolvedValueOnce('refresh');
 
     const result = await service.login({ login: 'john', password: 'ok' });
 
@@ -110,7 +115,9 @@ describe('AuthService', () => {
   });
 
   it('refresh throws ForbiddenException for revoked token', async () => {
-    prisma.revokedRefreshToken.findUnique.mockResolvedValue({ token: 'revoked' });
+    prisma.revokedRefreshToken.findUnique.mockResolvedValue({
+      token: 'revoked',
+    });
 
     await expect(service.refresh({ refreshToken: 'revoked' })).rejects.toThrow(
       ForbiddenError,
@@ -125,7 +132,9 @@ describe('AuthService', () => {
       login: 'john',
       role: UserRole.ADMIN,
     });
-    jwtService.signAsync.mockResolvedValueOnce('new-access').mockResolvedValueOnce('new-refresh');
+    jwtService.signAsync
+      .mockResolvedValueOnce('new-access')
+      .mockResolvedValueOnce('new-refresh');
 
     const result = await service.refresh({ refreshToken: 'r1' });
 

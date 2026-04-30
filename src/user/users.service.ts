@@ -1,13 +1,7 @@
-import {
-  ConflictException,
-  Injectable,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { User as PrismaUser } from '@prisma/client';
-import {
-  ForbiddenError,
-  NotFoundError,
-} from '../common/errors/http-errors';
+import { ForbiddenError, NotFoundError } from '../common/errors/http-errors';
 import { UserRole } from '../common/enums/user-role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { toApiUserRole, toPrismaUserRole } from '../database/prisma-enums';

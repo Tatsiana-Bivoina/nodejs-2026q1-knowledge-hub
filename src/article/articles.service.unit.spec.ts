@@ -159,11 +159,18 @@ describe('ArticlesService', () => {
     prisma.article.findUnique.mockResolvedValueOnce(articleRow());
     prisma.user.findUnique.mockResolvedValue({ id: 'u1' });
     prisma.category.findUnique.mockResolvedValue({ id: 'c1' });
-    prisma.tag.upsert.mockResolvedValueOnce({ id: 't1' }).mockResolvedValueOnce({
-      id: 't2',
-    });
+    prisma.tag.upsert
+      .mockResolvedValueOnce({ id: 't1' })
+      .mockResolvedValueOnce({
+        id: 't2',
+      });
     prisma.article.update.mockResolvedValue(
-      articleRow({ tags: [{ id: 't1', name: 'a' }, { id: 't2', name: 'b' }] }),
+      articleRow({
+        tags: [
+          { id: 't1', name: 'a' },
+          { id: 't2', name: 'b' },
+        ],
+      }),
     );
 
     const result = await service.update('a1', {

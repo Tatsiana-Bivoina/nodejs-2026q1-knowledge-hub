@@ -1,6 +1,4 @@
-import {
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundError, ValidationError } from '../common/errors/http-errors';

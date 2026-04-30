@@ -35,7 +35,10 @@ async function bootstrap() {
   await app.listen(port);
   logger.log(`Application started on port ${port}`, 'Bootstrap');
 
-  const shutdown = async (reason: 'uncaughtException' | 'unhandledRejection', error: unknown) => {
+  const shutdown = async (
+    reason: 'uncaughtException' | 'unhandledRejection',
+    error: unknown,
+  ) => {
     const trace = error instanceof Error ? error.stack : undefined;
     if (reason === 'uncaughtException') {
       logger.fatal(`Process-level error: ${reason}`, trace, 'Process');

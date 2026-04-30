@@ -29,7 +29,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         error:
           typeof error === 'object' && error !== null && 'error' in error
             ? (error as { error?: unknown }).error
-            : HttpStatus[status] ?? 'Error',
+            : (HttpStatus[status] ?? 'Error'),
         message:
           typeof error === 'object' && error !== null && 'message' in error
             ? (error as { message?: unknown }).message

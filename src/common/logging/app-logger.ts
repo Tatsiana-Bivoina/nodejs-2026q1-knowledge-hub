@@ -1,5 +1,11 @@
 import { Injectable, LoggerService, LogLevel } from '@nestjs/common';
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  statSync,
+} from 'fs';
 import { join } from 'path';
 
 type LevelPriority = Record<LogLevel, number>;
@@ -141,7 +147,8 @@ export class AppLogger implements LoggerService {
     const timestamp = now.toISOString();
     const context = ctx.context ? ` [${ctx.context}]` : '';
     const trace = ctx.trace ? `\n${ctx.trace}` : '';
-    const meta = ctx.meta !== undefined ? ` ${this.safeStringify(ctx.meta)}` : '';
+    const meta =
+      ctx.meta !== undefined ? ` ${this.safeStringify(ctx.meta)}` : '';
     return `${timestamp} ${level.toUpperCase()}${context} ${this.stringifyMessage(message)}${meta}${trace}\n`;
   }
 

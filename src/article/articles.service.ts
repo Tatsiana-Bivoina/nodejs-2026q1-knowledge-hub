@@ -1,11 +1,6 @@
-import {
-  Injectable,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import {
-  NotFoundError,
-  ValidationError,
-} from '../common/errors/http-errors';
+import { NotFoundError, ValidationError } from '../common/errors/http-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   toApiArticleStatus,
