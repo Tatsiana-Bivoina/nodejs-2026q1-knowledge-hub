@@ -33,6 +33,7 @@ Main variables:
 - `GEMINI_API_KEY=your-gemini-api-key`
 - `GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com`
 - `GEMINI_MODEL=gemini-2.0-flash`
+- `AI_RATE_LIMIT_RPM=20` (max AI requests per minute per client IP)
 - `AI_CACHE_TTL_SEC=300` (in-memory cache TTL for AI summarize/translate responses)
 
 Optional proxy variables for Gemini (useful for region bypass with local Fiddler):
@@ -63,6 +64,15 @@ GET http://localhost:4000/ai/test
 ```
 
 If proxy is configured correctly, the endpoint returns Gemini-generated text.
+
+## AI usage and rate limit
+
+- All `/ai/*` routes are protected by AI rate limiting (`AI_RATE_LIMIT_RPM`, default `20`).
+- If exceeded, API returns `429 Too Many Requests` with `Retry-After` header.
+- In-memory usage stats are available at `GET /ai/usage`:
+  - total AI requests
+  - requests per endpoint
+  - aggregated token usage (when Gemini returns usage metadata)
 
 ## Installing NPM modules
 

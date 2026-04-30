@@ -5,6 +5,7 @@ import {
   InternalError,
   ServiceUnavailableError,
 } from '../common/errors/http-errors';
+import { AiUsageService } from './ai-usage.service';
 
 type GeminiPart = {
   text?: string;
@@ -18,6 +19,11 @@ type GeminiCandidate = {
 
 type GeminiGenerateResponse = {
   candidates?: GeminiCandidate[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
 };
 
 @Injectable()
@@ -29,8 +35,12 @@ export class GeminiService {
   private readonly model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
   private readonly apiKey = process.env.GEMINI_API_KEY;
   private readonly axiosClient: AxiosInstance;
+  private readonly maxRetries = 3;
 
-  constructor(private readonly appLogger: AppLogger) {
+  constructor(
+    private readonly appLogger: AppLogger,
+    private readonly aiUsageService: AiUsageService,
+  ) {
     if (!this.apiKey) {
       throw new InternalError('GEMINI_API_KEY is not configured');
     }
@@ -52,26 +62,42 @@ export class GeminiService {
       ],
     };
 
-    try {
-      const response = await this.axiosClient.post<GeminiGenerateResponse>(
-        `/v1/models/${this.model}:generateContent`,
-        body,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': this.apiKey,
-          },
-        },
-      );
+    let lastError: unknown;
 
-      const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new ServiceUnavailableError('Gemini returned empty response');
+    for (let attempt = 0; attempt < this.maxRetries; attempt += 1) {
+      try {
+        const response = await this.axiosClient.post<GeminiGenerateResponse>(
+          `/v1/models/${this.model}:generateContent`,
+          body,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': this.apiKey,
+            },
+          },
+        );
+
+        this.aiUsageService.trackTokenUsage({
+          promptTokens: response.data.usageMetadata?.promptTokenCount,
+          completionTokens: response.data.usageMetadata?.candidatesTokenCount,
+          totalTokens: response.data.usageMetadata?.totalTokenCount,
+        });
+
+        const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          throw new ServiceUnavailableError('Gemini returned empty response');
+        }
+        return text;
+      } catch (error) {
+        lastError = error;
+        if (!this.shouldRetry(error, attempt)) {
+          break;
+        }
+        await this.sleep(250 * 2 ** attempt);
       }
-      return text;
-    } catch (error) {
-      throw this.mapGeminiError(error);
     }
+
+    throw this.mapGeminiError(lastError);
   }
 
   private buildProxyConfig(): AxiosRequestConfig['proxy'] | undefined {
@@ -125,6 +151,20 @@ export class GeminiService {
     }
 
     return new ServiceUnavailableError('Gemini request failed');
+  }
+
+  private shouldRetry(error: unknown, attempt: number): boolean {
+    if (attempt >= this.maxRetries - 1 || !axios.isAxiosError(error)) {
+      return false;
+    }
+    const status = error.response?.status;
+    return status === 429 || status === 503 || !error.response;
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
 
   private getUpstreamMessage(error: AxiosError): string {
