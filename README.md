@@ -35,6 +35,7 @@ Main variables:
 - `GEMINI_MODEL=gemini-2.0-flash`
 - `AI_RATE_LIMIT_RPM=20` (max AI requests per minute per client IP)
 - `AI_CACHE_TTL_SEC=300` (in-memory cache TTL for AI summarize/translate responses)
+- `AI_CONVERSATION_TTL_SEC=900` (TTL for in-memory conversation sessions used by `POST /ai/generate`)
 
 Optional proxy variables for Gemini (useful for region bypass with local Fiddler):
 
@@ -46,25 +47,6 @@ When app runs inside Docker Compose, `DATABASE_URL` is overridden in `docker-com
 
 If you use Docker PostgreSQL on `localhost:5432`, make sure local Postgres service (for example Postgres.app) is stopped, otherwise host and container DB can be mixed.
 
-## Gemini proxy quick setup (Fiddler)
-
-1. Start Fiddler and enable **Tools -> Options -> Connections -> Fiddler listens on port 8888**.
-2. Set proxy env vars in `.env`:
-
-```dotenv
-AI_PROXY_HOST=127.0.0.1
-AI_PROXY_PORT=8888
-AI_PROXY_PROTOCOL=http
-```
-
-3. Start the app and call:
-
-```bash
-GET http://localhost:4000/ai/test
-```
-
-If proxy is configured correctly, the endpoint returns Gemini-generated text.
-
 ## AI usage and rate limit
 
 - All `/ai/*` routes are protected by AI rate limiting (`AI_RATE_LIMIT_RPM`, default `20`).
@@ -73,6 +55,81 @@ If proxy is configured correctly, the endpoint returns Gemini-generated text.
   - total AI requests
   - requests per endpoint
   - aggregated token usage (when Gemini returns usage metadata)
+  - average Gemini latency (successful calls) and total time samples
+  - summarize/translate **cache** hits, misses, and hit ratio
+  - last upstream error **category** and HTTP status (no secrets in the payload)
+
+## Knowledge Hub + Gemini (assignment)
+
+### 1) How to get a Google Gemini API key
+
+1. Open [Google AI Studio](https://aistudio.google.com) and sign in with a Google account.
+2. If the site or API says your **location is not supported**, use a **supported network path** (for example a desktop VPN with a **US** exit) before creating the key. Browser-only VPN extensions do not change traffic from the terminal or Docker; use a **system VPN** for server-side `curl` and Nest, or route HTTP through a local proxy (see [Gemini proxy quick setup](#gemini-proxy-quick-setup-fiddler--mitmproxy)) so outbound requests use the same path.
+3. In AI Studio, create or pick a project.
+4. Go to **API keys** → **Create API key**.
+5. Copy the key into `.env` as `GEMINI_API_KEY` (never commit the real key).
+
+### 2) Which model is used
+
+- Set `GEMINI_MODEL` in `.env` (for example `gemini-2.0-flash` or `gemini-2.5-flash` if your key has access). The app calls `https://generativelanguage.googleapis.com` and the `generateContent` API for that model.
+
+### 3) After clone: required env and where the key lives
+
+- Copy `cp .env.example .env`.
+- Put the real key only in local `.env` (and in your password manager), not in git.
+- Main variables: `GEMINI_API_KEY`, `GEMINI_API_BASE_URL`, `GEMINI_MODEL`, `AI_RATE_LIMIT_RPM`, `AI_CACHE_TTL_SEC`, and optional `AI_PROXY_*` for HTTP proxying (see above).
+- For **Docker**, use `AI_PROXY_HOST=host.docker.internal` if the proxy runs on the host (for example `mitmweb` on `8888`).
+
+### 4) Run the app and test AI endpoints
+
+1. Run DB migrations and seed (see [Prisma](#prisma)) so at least one article exists for article-based AI routes.
+2. Start the API (`npm start` or `docker compose up --build`).
+3. Open Swagger at `http://localhost:4000/doc`, click **Authorize**, and paste `Bearer <accessToken>` (get tokens via `POST /auth/login` after seed — default seed users include `admin` / `password123`).
+4. Try:
+   - `POST /ai/articles/{articleId}/summarize` with body `{ "maxLength": "medium" }` (optional).
+   - `POST /ai/articles/{articleId}/translate` with `{ "targetLanguage": "English" }`.
+   - `POST /ai/articles/{articleId}/analyze` with `{ "task": "review" }` (optional).
+   - Optional: `POST /ai/generate` with `{ "prompt": "Your question" }` and optional `"sessionId"` (UUID from the previous response) to keep **short-term conversation context** in memory.
+   - `GET /ai/test` — minimal Gemini connectivity check (requires auth).
+
+Example with `curl` (replace `TOKEN` and `ARTICLE_ID`):
+
+```bash
+curl -s http://localhost:4000/ai/articles/ARTICLE_ID/summarize \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"maxLength":"short"}'
+```
+
+### 5) Known limitations
+
+- **Free tier quotas**: Gemini may return rate-limit / quota errors; the service maps many upstream failures to `503` and retries some transient cases.
+- **Latency**: LLM calls can be slow; tune timeouts only if you accept operational trade-offs.
+- **Regional availability**: Some regions are blocked for the API; use a supported egress path (VPN/proxy) where needed.
+- **In-memory cache and usage**: Summarize/translate responses are cached in process memory with TTL; usage counters reset on restart.
+- **Conversation sessions** for `POST /ai/generate` are stored in process memory (not shared across instances); they expire after `AI_CONVERSATION_TTL_SEC`.
+
+### 6) Structured LLM output and observability (rubric “Hacker” items)
+
+- **Schema-style validation**: JSON returned by Gemini for **analyze** and **translate** is passed through `src/ai/validation/ai-output.validation.ts` (field checks, length limits, safe fallbacks to raw text when needed).
+- **Metrics** on `GET /ai/usage`: token sums, per-endpoint request counts, **average Gemini latency** (successful calls), **cache hit ratio** for summarize/translate, and a small **last error** diagnostic (category + optional HTTP status, no API key or response body).
+- **Session context** for `POST /ai/generate`: request body may include `sessionId` from the previous response; the server keeps a short in-memory transcript and sends multi-turn `contents` to Gemini.
+
+## Gemini proxy quick setup (Fiddler / mitmproxy)
+
+1. Start a local HTTP proxy on port **8888** (for example **mitmweb**: `mitmweb --listen-port 8888 --web-port 8081`, or Fiddler with the same listen port).
+2. Use a **system VPN** (or other egress) if Gemini rejects your region; **mitmproxy alone does not change country** — it only forwards traffic.
+3. Set proxy env vars in `.env`:
+
+```dotenv
+AI_PROXY_HOST=127.0.0.1
+AI_PROXY_PORT=8888
+AI_PROXY_PROTOCOL=http
+```
+
+For Docker, prefer `AI_PROXY_HOST=host.docker.internal`.
+
+4. Start the app and call `GET /ai/test` (with a valid Bearer token in Swagger or curl).
 
 ## Installing NPM modules
 
@@ -214,6 +271,12 @@ To run base tests:
 
 ```
 npm run test
+```
+
+The API must be running and the database must be migrated (and usually seeded) before e2e tests. For example, only the AI smoke suite:
+
+```
+npm run test -- test/ai.e2e.spec.ts
 ```
 
 To run only one of all test suites

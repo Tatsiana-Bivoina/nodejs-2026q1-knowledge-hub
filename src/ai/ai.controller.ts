@@ -6,7 +6,9 @@ import { AnalyzeArticleDto } from './dto/analyze-article.dto';
 import { AiArticleIdParamDto } from './dto/ai-article-id-param.dto';
 import { SummarizeArticleDto } from './dto/summarize-article.dto';
 import { TranslateArticleDto } from './dto/translate-article.dto';
+import { GenerateAiDto } from './dto/generate-ai.dto';
 import { AiRateLimitGuard } from './guards/ai-rate-limit.guard';
+import { AiGenerateService } from './ai-generate.service';
 import { GeminiService } from './gemini.service';
 
 @ApiTags('ai')
@@ -18,6 +20,7 @@ export class AiController {
     private readonly geminiService: GeminiService,
     private readonly aiArticlesService: AiArticlesService,
     private readonly aiUsageService: AiUsageService,
+    private readonly aiGenerateService: AiGenerateService,
   ) {}
 
   @Get('test')
@@ -33,6 +36,16 @@ export class AiController {
   usage() {
     this.aiUsageService.trackRequest('/ai/usage');
     return this.aiUsageService.getSnapshot();
+  }
+
+  @Post('generate')
+  @ApiOperation({
+    summary:
+      'Optional free-form Gemini generation with optional session-based context',
+  })
+  async generateFreeForm(@Body() dto: GenerateAiDto) {
+    this.aiUsageService.trackRequest('/ai/generate');
+    return this.aiGenerateService.run(dto);
   }
 
   @Post('articles/:articleId/summarize')

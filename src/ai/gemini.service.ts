@@ -26,6 +26,11 @@ type GeminiGenerateResponse = {
   };
 };
 
+export type GeminiApiContent = {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+};
+
 @Injectable()
 export class GeminiService {
   private readonly logger = this.appLogger.child('GeminiService');
@@ -54,17 +59,18 @@ export class GeminiService {
   }
 
   async generate(prompt: string): Promise<string> {
-    const body = {
-      contents: [
-        {
-          parts: [{ text: prompt }],
-        },
-      ],
-    };
+    return this.generateFromContents([
+      { role: 'user', parts: [{ text: prompt }] },
+    ]);
+  }
+
+  async generateFromContents(contents: GeminiApiContent[]): Promise<string> {
+    const body = { contents };
 
     let lastError: unknown;
 
     for (let attempt = 0; attempt < this.maxRetries; attempt += 1) {
+      const started = Date.now();
       try {
         const response = await this.axiosClient.post<GeminiGenerateResponse>(
           `/v1/models/${this.model}:generateContent`,
@@ -87,6 +93,7 @@ export class GeminiService {
         if (!text) {
           throw new ServiceUnavailableError('Gemini returned empty response');
         }
+        this.aiUsageService.recordGeminiLatencyMs(Date.now() - started);
         return text;
       } catch (error) {
         lastError = error;
@@ -97,6 +104,9 @@ export class GeminiService {
       }
     }
 
+    if (lastError !== undefined) {
+      this.aiUsageService.recordDiagnostic(lastError);
+    }
     throw this.mapGeminiError(lastError);
   }
 
@@ -120,6 +130,15 @@ export class GeminiService {
   }
 
   private mapGeminiError(error: unknown): Error {
+    if (
+      error instanceof ServiceUnavailableError ||
+      error instanceof InternalError
+    ) {
+      return error;
+    }
+    if (error === undefined || error === null) {
+      return new ServiceUnavailableError('Gemini request failed');
+    }
     if (!axios.isAxiosError(error)) {
       return new ServiceUnavailableError('Gemini request failed');
     }
