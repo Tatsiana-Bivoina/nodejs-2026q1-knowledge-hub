@@ -26,6 +26,17 @@ type QdrantScrollResponse = {
   };
 };
 
+type QdrantSearchResponse = {
+  result?: Array<{
+    score?: number;
+    payload?: {
+      articleId?: string;
+      articleTitle?: string;
+      chunk?: string;
+    };
+  }>;
+};
+
 @Injectable()
 export class RagService {
   private readonly logger = this.appLogger.child('RagService');
@@ -106,18 +117,62 @@ export class RagService {
   }
 
   async search(dto: RagSearchDto) {
-    return {
-      results: [],
-      meta: {
-        query: dto.query,
-        limit: dto.limit ?? 5,
-        filters: {
-          articleStatus: dto.articleStatus ?? null,
-          categoryId: dto.categoryId ?? null,
-          tags: dto.tags ?? [],
+    const queryVector = await this.geminiService.embedText(dto.query);
+    const limit = dto.limit ?? 5;
+
+    const must: Array<Record<string, unknown>> = [];
+    if (dto.articleStatus) {
+      must.push({
+        key: 'articleStatus',
+        match: { value: dto.articleStatus },
+      });
+    }
+    if (dto.categoryId) {
+      must.push({
+        key: 'categoryId',
+        match: { value: dto.categoryId },
+      });
+    }
+    if (dto.tags?.length) {
+      must.push({
+        key: 'tags',
+        match: { any: dto.tags },
+      });
+    }
+
+    try {
+      const response = await this.qdrant.post<QdrantSearchResponse>(
+        `/collections/${this.vectorCollection}/points/search`,
+        {
+          vector: queryVector,
+          limit,
+          with_payload: true,
+          with_vector: false,
+          ...(must.length ? { filter: { must } } : {}),
         },
-      },
-    };
+      );
+
+      const results = (response.data.result ?? [])
+        .filter(
+          (item) =>
+            item.payload?.articleId &&
+            item.payload?.articleTitle &&
+            item.payload?.chunk,
+        )
+        .map((item) => ({
+          articleId: item.payload!.articleId!,
+          articleTitle: item.payload!.articleTitle!,
+          chunk: item.payload!.chunk!,
+          similarity: item.score ?? 0,
+        }));
+
+      return { results };
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return { results: [] };
+      }
+      throw this.toVectorDbError(error);
+    }
   }
 
   async chat(dto: RagChatDto) {
