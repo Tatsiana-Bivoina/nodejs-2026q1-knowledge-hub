@@ -26,6 +26,14 @@ type GeminiGenerateResponse = {
   };
 };
 
+type GeminiEmbedding = {
+  values?: number[];
+};
+
+type GeminiBatchEmbedResponse = {
+  embeddings?: GeminiEmbedding[];
+};
+
 export type GeminiApiContent = {
   role: 'user' | 'model';
   parts: { text: string }[];
@@ -38,6 +46,8 @@ export class GeminiService {
     process.env.GEMINI_API_BASE_URL ||
     'https://generativelanguage.googleapis.com';
   private readonly model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+  private readonly embeddingModel =
+    process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-002';
   private readonly apiKey = process.env.GEMINI_API_KEY;
   private readonly axiosClient: AxiosInstance;
   private readonly maxRetries = 3;
@@ -95,6 +105,68 @@ export class GeminiService {
         }
         this.aiUsageService.recordGeminiLatencyMs(Date.now() - started);
         return text;
+      } catch (error) {
+        lastError = error;
+        if (!this.shouldRetry(error, attempt)) {
+          break;
+        }
+        await this.sleep(250 * 2 ** attempt);
+      }
+    }
+
+    if (lastError !== undefined) {
+      this.aiUsageService.recordDiagnostic(lastError);
+    }
+    throw this.mapGeminiError(lastError);
+  }
+
+  async embedText(text: string): Promise<number[]> {
+    const [vector] = await this.embedTexts([text]);
+    return vector;
+  }
+
+  async embedTexts(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) {
+      return [];
+    }
+
+    const body = {
+      requests: texts.map((text) => ({
+        model: `models/${this.embeddingModel}`,
+        content: { parts: [{ text }] },
+      })),
+    };
+
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < this.maxRetries; attempt += 1) {
+      const started = Date.now();
+      try {
+        const response = await this.axiosClient.post<GeminiBatchEmbedResponse>(
+          `/v1/models/${this.embeddingModel}:batchEmbedContents`,
+          body,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': this.apiKey,
+            },
+          },
+        );
+
+        const embeddings = response.data.embeddings ?? [];
+        if (embeddings.length !== texts.length) {
+          throw new ServiceUnavailableError(
+            'Gemini returned unexpected embeddings response',
+          );
+        }
+
+        const vectors = embeddings.map((e) => e.values ?? []);
+        if (vectors.some((v) => v.length === 0)) {
+          throw new ServiceUnavailableError('Gemini returned empty embeddings');
+        }
+
+        this.aiUsageService.recordGeminiLatencyMs(Date.now() - started);
+        return vectors;
       } catch (error) {
         lastError = error;
         if (!this.shouldRetry(error, attempt)) {
