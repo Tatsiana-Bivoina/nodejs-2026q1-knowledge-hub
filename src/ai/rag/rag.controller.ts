@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -48,5 +49,15 @@ export class RagController {
     @Param('articleId', new ParseUUIDPipe({ version: '4' })) articleId: string,
   ) {
     await this.ragService.removeArticleFromIndexOrThrow(articleId);
+  }
+
+  @Get('chat/:conversationId/history')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get RAG chat conversation history' })
+  history(
+    @Param('conversationId', new ParseUUIDPipe({ version: '4' }))
+    conversationId: string,
+  ) {
+    return this.ragService.getConversationHistory(conversationId);
   }
 }

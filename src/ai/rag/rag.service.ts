@@ -256,6 +256,14 @@ export class RagService {
     }
   }
 
+  getConversationHistory(conversationId: string) {
+    const messages = this.conversations.get(conversationId) ?? [];
+    return {
+      conversationId,
+      messages,
+    };
+  }
+
   private getChunkSize(): number {
     const raw = Number.parseInt(process.env.RAG_CHUNK_SIZE ?? '800', 10);
     return Number.isFinite(raw) && raw > 0 ? raw : 800;
