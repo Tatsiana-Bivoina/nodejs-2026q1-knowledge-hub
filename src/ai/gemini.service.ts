@@ -34,6 +34,10 @@ type GeminiBatchEmbedResponse = {
   embeddings?: GeminiEmbedding[];
 };
 
+type GeminiSingleEmbedResponse = {
+  embedding?: GeminiEmbedding;
+};
+
 export type GeminiApiContent = {
   role: 'user' | 'model';
   parts: { text: string }[];
@@ -130,7 +134,7 @@ export class GeminiService {
       return [];
     }
 
-    const body = {
+    const batchBody = {
       requests: texts.map((text) => ({
         model: `models/${this.embeddingModel}`,
         content: { parts: [{ text }] },
@@ -142,28 +146,7 @@ export class GeminiService {
     for (let attempt = 0; attempt < this.maxRetries; attempt += 1) {
       const started = Date.now();
       try {
-        const response = await this.axiosClient.post<GeminiBatchEmbedResponse>(
-          `/v1/models/${this.embeddingModel}:batchEmbedContents`,
-          body,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': this.apiKey,
-            },
-          },
-        );
-
-        const embeddings = response.data.embeddings ?? [];
-        if (embeddings.length !== texts.length) {
-          throw new ServiceUnavailableError(
-            'Gemini returned unexpected embeddings response',
-          );
-        }
-
-        const vectors = embeddings.map((e) => e.values ?? []);
-        if (vectors.some((v) => v.length === 0)) {
-          throw new ServiceUnavailableError('Gemini returned empty embeddings');
-        }
+        const vectors = await this.tryBatchEmbed(texts, batchBody);
 
         this.aiUsageService.recordGeminiLatencyMs(Date.now() - started);
         return vectors;
@@ -180,6 +163,103 @@ export class GeminiService {
       this.aiUsageService.recordDiagnostic(lastError);
     }
     throw this.mapGeminiError(lastError);
+  }
+
+  private async tryBatchEmbed(
+    texts: string[],
+    batchBody: {
+      requests: Array<{
+        model: string;
+        content: { parts: Array<{ text: string }> };
+      }>;
+    },
+  ): Promise<number[][]> {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': this.apiKey,
+    };
+
+    // Embeddings APIs can differ between v1 and v1beta depending on account/region.
+    const candidates: Array<{ url: string; kind: 'batch' | 'single' }> = [
+      { url: `/v1/models/${this.embeddingModel}:batchEmbedContents`, kind: 'batch' },
+      { url: `/v1beta/models/${this.embeddingModel}:batchEmbedContents`, kind: 'batch' },
+      { url: `/v1/models/${this.embeddingModel}:embedContent`, kind: 'single' },
+      { url: `/v1beta/models/${this.embeddingModel}:embedContent`, kind: 'single' },
+    ];
+
+    let lastError: unknown;
+
+    for (const c of candidates) {
+      try {
+        if (c.kind === 'batch') {
+          const response =
+            await this.axiosClient.post<GeminiBatchEmbedResponse>(
+              c.url,
+              batchBody,
+              { headers },
+            );
+
+          const embeddings = response.data.embeddings ?? [];
+          if (embeddings.length !== texts.length) {
+            throw new ServiceUnavailableError(
+              'Gemini returned unexpected embeddings response',
+            );
+          }
+          const vectors = embeddings.map((e) => e.values ?? []);
+          if (vectors.some((v) => v.length === 0)) {
+            throw new ServiceUnavailableError('Gemini returned empty embeddings');
+          }
+          return vectors;
+        }
+
+        // Fallback: embed one-by-one for providers without batch endpoint.
+        const vectors: number[][] = [];
+        for (const text of texts) {
+          const response = await this.axiosClient.post<GeminiSingleEmbedResponse>(
+            c.url,
+            { content: { parts: [{ text }] } },
+            { headers },
+          );
+          const vector = response.data.embedding?.values ?? [];
+          if (vector.length === 0) {
+            throw new ServiceUnavailableError('Gemini returned empty embedding');
+          }
+          vectors.push(vector);
+        }
+        return vectors;
+      } catch (error) {
+        lastError = error;
+        // If it's a "method not found" / "not supported" style error, try next candidate.
+        if (this.isNonRetryableEmbeddingApiMismatch(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new ServiceUnavailableError('Gemini embeddings request failed');
+  }
+
+  private isNonRetryableEmbeddingApiMismatch(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) {
+      return false;
+    }
+    const status = error.response?.status;
+    if (status === 404) {
+      return true;
+    }
+    if (status !== 400) {
+      return false;
+    }
+    const message = this.getUpstreamMessage(error);
+    return (
+      /not found/i.test(message) ||
+      /method not allowed/i.test(message) ||
+      /unsupported/i.test(message) ||
+      /not supported/i.test(message)
+    );
   }
 
   private buildProxyConfig(): AxiosRequestConfig['proxy'] | undefined {

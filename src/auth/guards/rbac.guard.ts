@@ -38,6 +38,11 @@ export class RbacGuard implements CanActivate {
       return false;
     }
 
+    // AI endpoints are available to any authenticated user.
+    if (request.path.startsWith('/ai')) {
+      return true;
+    }
+
     if (request.method === 'GET') {
       return true;
     }

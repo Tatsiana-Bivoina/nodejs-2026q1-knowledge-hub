@@ -8,13 +8,14 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ReindexRagDto } from './dto/reindex-rag.dto';
 import { RagChatDto } from './dto/rag-chat.dto';
 import { RagSearchDto } from './dto/rag-search.dto';
 import { RagService } from './rag.service';
 
 @ApiTags('ai-rag')
+@ApiBearerAuth('access-token')
 @Controller('ai/rag')
 export class RagController {
   constructor(private readonly ragService: RagService) {}

@@ -9,6 +9,7 @@ import { CategoryModule } from './category/category.module';
 import { CommentModule } from './comment/comment.module';
 import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
+import { RagModule } from './ai/rag/rag.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AiModule } from './ai/ai.module';
     CommentModule,
     AuthModule,
     AiModule,
+    RagModule,
   ],
 })
 export class AppModule implements NestModule {
