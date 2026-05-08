@@ -32,9 +32,24 @@ type QdrantSearchResponse = {
     payload?: {
       articleId?: string;
       articleTitle?: string;
+      articleStatus?: string;
+      categoryId?: string | null;
+      tags?: string[];
       chunk?: string;
     };
   }>;
+};
+
+type RetrievedChunk = {
+  articleId: string;
+  articleTitle: string;
+  chunk: string;
+  similarity: number;
+};
+
+type ConversationMessage = {
+  role: 'user' | 'assistant';
+  text: string;
 };
 
 @Injectable()
@@ -46,7 +61,9 @@ export class RagService {
     process.env.RAG_VECTOR_COLLECTION ?? 'knowledge_hub_articles';
   private readonly chunkSize = this.getChunkSize();
   private readonly chunkOverlap = this.getChunkOverlap();
+  private readonly maxConversationMessages = this.getConversationMaxMessages();
   private readonly qdrant: AxiosInstance;
+  private readonly conversations = new Map<string, ConversationMessage[]>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -117,9 +134,6 @@ export class RagService {
   }
 
   async search(dto: RagSearchDto) {
-    const queryVector = await this.geminiService.embedText(dto.query);
-    const limit = dto.limit ?? 5;
-
     const must: Array<Record<string, unknown>> = [];
     if (dto.articleStatus) {
       must.push({
@@ -140,19 +154,71 @@ export class RagService {
       });
     }
 
+    const results = await this.semanticSearch({
+      query: dto.query,
+      limit: dto.limit ?? 5,
+      must,
+    });
+
+    return { results };
+  }
+
+  async chat(dto: RagChatDto) {
+    const conversationId = dto.conversationId ?? randomUUID();
+    const history = this.conversations.get(conversationId) ?? [];
+    const retrievedChunks = await this.semanticSearch({
+      query: dto.question,
+      limit: 5,
+      must: [],
+    });
+
+    const prompt = this.buildGroundedChatPrompt(
+      dto.question,
+      history,
+      retrievedChunks,
+    );
+    const answer = await this.geminiService.generate(prompt);
+
+    this.appendConversationMessage(conversationId, {
+      role: 'user',
+      text: dto.question,
+    });
+    this.appendConversationMessage(conversationId, {
+      role: 'assistant',
+      text: answer,
+    });
+
+    return {
+      answer,
+      sources: retrievedChunks.map((chunk) => ({
+        articleId: chunk.articleId,
+        articleTitle: chunk.articleTitle,
+        relevantChunk: chunk.chunk,
+      })),
+      conversationId,
+    };
+  }
+
+  private async semanticSearch(params: {
+    query: string;
+    limit: number;
+    must: Array<Record<string, unknown>>;
+  }): Promise<RetrievedChunk[]> {
+    const queryVector = await this.geminiService.embedText(params.query);
+
     try {
       const response = await this.qdrant.post<QdrantSearchResponse>(
         `/collections/${this.vectorCollection}/points/search`,
         {
           vector: queryVector,
-          limit,
+          limit: params.limit,
           with_payload: true,
           with_vector: false,
-          ...(must.length ? { filter: { must } } : {}),
+          ...(params.must.length ? { filter: { must: params.must } } : {}),
         },
       );
 
-      const results = (response.data.result ?? [])
+      return (response.data.result ?? [])
         .filter(
           (item) =>
             item.payload?.articleId &&
@@ -165,25 +231,12 @@ export class RagService {
           chunk: item.payload!.chunk!,
           similarity: item.score ?? 0,
         }));
-
-      return { results };
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
-        return { results: [] };
+        return [];
       }
       throw this.toVectorDbError(error);
     }
-  }
-
-  async chat(dto: RagChatDto) {
-    const conversationId = dto.conversationId ?? randomUUID();
-
-    return {
-      answer:
-        'RAG chat scaffold is ready. Real retrieval and generation will be implemented in next blocks.',
-      sources: [],
-      conversationId,
-    };
   }
 
   async removeArticleFromIndex(articleId: string): Promise<boolean> {
@@ -216,6 +269,14 @@ export class RagService {
     return raw;
   }
 
+  private getConversationMaxMessages(): number {
+    const raw = Number.parseInt(
+      process.env.RAG_CONVERSATION_MAX_MESSAGES ?? '20',
+      10,
+    );
+    return Number.isFinite(raw) && raw > 0 ? raw : 20;
+  }
+
   private chunkText(content: string): string[] {
     const text = content.trim();
     if (!text) {
@@ -238,6 +299,56 @@ export class RagService {
     }
 
     return chunks;
+  }
+
+  private appendConversationMessage(
+    conversationId: string,
+    message: ConversationMessage,
+  ): void {
+    const messages = this.conversations.get(conversationId) ?? [];
+    messages.push(message);
+    if (messages.length > this.maxConversationMessages) {
+      messages.splice(0, messages.length - this.maxConversationMessages);
+    }
+    this.conversations.set(conversationId, messages);
+  }
+
+  private buildGroundedChatPrompt(
+    question: string,
+    history: ConversationMessage[],
+    chunks: RetrievedChunk[],
+  ): string {
+    const historyText =
+      history.length === 0
+        ? 'No prior conversation.'
+        : history
+            .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+            .join('\n');
+
+    const sourcesText =
+      chunks.length === 0
+        ? 'No relevant sources found in the indexed knowledge base.'
+        : chunks
+            .map(
+              (chunk, idx) =>
+                `[S${idx + 1}] ${chunk.articleTitle} (${chunk.articleId})\n${chunk.chunk}`,
+            )
+            .join('\n\n');
+
+    return [
+      'You are a Knowledge Hub assistant. Answer only using the provided sources.',
+      'If sources are insufficient, explicitly say that information is not available in Knowledge Hub.',
+      '',
+      'Conversation history:',
+      historyText,
+      '',
+      'Sources:',
+      sourcesText,
+      '',
+      `User question: ${question}`,
+      '',
+      'Provide a concise answer in plain text.',
+    ].join('\n');
   }
 
   private makePointId(articleId: string, chunkIndex: number): string {
