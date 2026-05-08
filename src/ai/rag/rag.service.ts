@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import axios, { AxiosError, AxiosInstance } from 'axios';
-import { ArticleStatus as PrismaArticleStatus } from '@prisma/client';
+import {
+  ArticleStatus as PrismaArticleStatus,
+  Prisma,
+} from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import {
   NotFoundError,
@@ -47,6 +50,12 @@ type RetrievedChunk = {
   similarity: number;
 };
 
+type HybridCandidate = RetrievedChunk & {
+  semanticScore: number;
+  lexicalScore: number;
+  rerankBoost: number;
+};
+
 type ConversationMessage = {
   role: 'user' | 'assistant';
   text: string;
@@ -88,10 +97,24 @@ export class RagService {
       orderBy: { id: 'asc' },
     });
 
+    let indexedArticles = 0;
     let indexedChunks = 0;
     let collectionReady = false;
 
     for (const article of articles) {
+      const articleFingerprint = this.computeArticleFingerprint({
+        title: article.title,
+        content: article.content,
+        status: toApiArticleStatus(article.status),
+        categoryId: article.categoryId,
+        tags: article.tags.map((tag) => tag.name),
+      });
+
+      const storedFingerprint = await this.getStoredArticleFingerprint(article.id);
+      if (storedFingerprint === articleFingerprint) {
+        continue;
+      }
+
       await this.deleteVectorsForArticle(article.id);
 
       const chunks = this.chunkText(article.content);
@@ -117,17 +140,19 @@ export class RagService {
           articleStatus: toApiArticleStatus(article.status),
           categoryId: article.categoryId,
           tags: article.tags.map((tag) => tag.name),
+          articleFingerprint,
           chunkIndex: idx,
           chunk,
         },
       }));
 
       await this.upsertPoints(points);
+      indexedArticles += 1;
       indexedChunks += points.length;
     }
 
     return {
-      indexedArticles: articles.length,
+      indexedArticles,
       indexedChunks,
       vectorCollection: this.vectorCollection,
     };
@@ -154,10 +179,15 @@ export class RagService {
       });
     }
 
-    const results = await this.semanticSearch({
+    const results = await this.hybridRetrieve({
       query: dto.query,
       limit: dto.limit ?? 5,
       must,
+      prismaWhere: this.buildArticleWhere({
+        articleStatus: dto.articleStatus,
+        categoryId: dto.categoryId,
+        tags: dto.tags,
+      }),
     });
 
     return { results };
@@ -166,10 +196,11 @@ export class RagService {
   async chat(dto: RagChatDto) {
     const conversationId = dto.conversationId ?? randomUUID();
     const history = this.conversations.get(conversationId) ?? [];
-    const retrievedChunks = await this.semanticSearch({
+    const retrievedChunks = await this.hybridRetrieve({
       query: dto.question,
       limit: 5,
       must: [],
+      prismaWhere: {},
     });
 
     const prompt = this.buildGroundedChatPrompt(
@@ -239,6 +270,143 @@ export class RagService {
     }
   }
 
+  private async hybridRetrieve(params: {
+    query: string;
+    limit: number;
+    must: Array<Record<string, unknown>>;
+    prismaWhere: Prisma.ArticleWhereInput;
+  }): Promise<RetrievedChunk[]> {
+    const semantic = await this.semanticSearch({
+      query: params.query,
+      limit: Math.min(params.limit * 3, 20),
+      must: params.must,
+    });
+    const lexical = await this.lexicalRetrieve({
+      query: params.query,
+      limit: Math.min(params.limit * 3, 20),
+      where: params.prismaWhere,
+    });
+
+    const merged = new Map<string, HybridCandidate>();
+    for (const s of semantic) {
+      const key = `${s.articleId}::${s.chunk}`;
+      merged.set(key, {
+        ...s,
+        semanticScore: s.similarity,
+        lexicalScore: 0,
+        rerankBoost: 0,
+      });
+    }
+    for (const l of lexical) {
+      const key = `${l.articleId}::${l.chunk}`;
+      const existing = merged.get(key);
+      if (existing) {
+        existing.lexicalScore = Math.max(existing.lexicalScore, l.similarity);
+        continue;
+      }
+      merged.set(key, {
+        ...l,
+        semanticScore: 0,
+        lexicalScore: l.similarity,
+        rerankBoost: 0,
+      });
+    }
+
+    const queryTokens = this.tokenize(params.query);
+    const reranked = Array.from(merged.values()).map((candidate) => {
+      const base = candidate.semanticScore * 0.65 + candidate.lexicalScore * 0.35;
+      const overlap = this.computeTokenOverlapScore(queryTokens, candidate.chunk);
+      const titleBoost =
+        this.computeTokenOverlapScore(queryTokens, candidate.articleTitle) * 0.1;
+      const rerankBoost = overlap * 0.2 + titleBoost;
+      return {
+        ...candidate,
+        rerankBoost,
+        similarity: base + rerankBoost,
+      };
+    });
+
+    return reranked
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, params.limit)
+      .map(({ articleId, articleTitle, chunk, similarity }) => ({
+        articleId,
+        articleTitle,
+        chunk,
+        similarity,
+      }));
+  }
+
+  private async lexicalRetrieve(params: {
+    query: string;
+    limit: number;
+    where: Prisma.ArticleWhereInput;
+  }): Promise<RetrievedChunk[]> {
+    const tokens = this.tokenize(params.query);
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const articles = await this.prisma.article.findMany({
+      where: params.where,
+      include: { tags: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+
+    const candidates: RetrievedChunk[] = [];
+    for (const article of articles) {
+      const chunks = this.chunkText(article.content);
+      for (const chunk of chunks) {
+        const score = this.computeTokenOverlapScore(tokens, chunk);
+        if (score <= 0) {
+          continue;
+        }
+        candidates.push({
+          articleId: article.id,
+          articleTitle: article.title,
+          chunk,
+          similarity: score,
+        });
+      }
+    }
+
+    return candidates
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, params.limit);
+  }
+
+  private buildArticleWhere(params: {
+    articleStatus?: string;
+    categoryId?: string;
+    tags?: string[];
+  }): Prisma.ArticleWhereInput {
+    const where: Prisma.ArticleWhereInput = {};
+    if (params.articleStatus) {
+      where.status = this.toPrismaStatus(params.articleStatus);
+    }
+    if (params.categoryId) {
+      where.categoryId = params.categoryId;
+    }
+    if (params.tags?.length) {
+      where.tags = { some: { name: { in: params.tags } } };
+    }
+    return where;
+  }
+
+  private toPrismaStatus(status: string): PrismaArticleStatus {
+    switch (status) {
+      case 'draft':
+        return PrismaArticleStatus.DRAFT;
+      case 'published':
+        return PrismaArticleStatus.PUBLISHED;
+      case 'archived':
+        return PrismaArticleStatus.ARCHIVED;
+      default:
+        return PrismaArticleStatus.PUBLISHED;
+    }
+  }
+
   async removeArticleFromIndex(articleId: string): Promise<boolean> {
     const exists = await this.hasVectorsForArticle(articleId);
     if (!exists) {
@@ -283,6 +451,28 @@ export class RagService {
       10,
     );
     return Number.isFinite(raw) && raw > 0 ? raw : 20;
+  }
+
+  private tokenize(text: string): string[] {
+    return text
+      .toLowerCase()
+      .split(/[^a-zа-я0-9_]+/i)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2);
+  }
+
+  private computeTokenOverlapScore(tokens: string[], text: string): number {
+    if (tokens.length === 0) {
+      return 0;
+    }
+    const lowered = text.toLowerCase();
+    let matched = 0;
+    for (const token of tokens) {
+      if (lowered.includes(token)) {
+        matched += 1;
+      }
+    }
+    return matched / tokens.length;
   }
 
   private chunkText(content: string): string[] {
@@ -374,6 +564,23 @@ export class RagService {
     return `${hex.slice(0, 8).join('')}-${hex.slice(8, 12).join('')}-${hex.slice(12, 16).join('')}-${hex.slice(16, 20).join('')}-${hex.slice(20, 32).join('')}`;
   }
 
+  private computeArticleFingerprint(params: {
+    title: string;
+    content: string;
+    status: string;
+    categoryId: string | null;
+    tags: string[];
+  }): string {
+    const canonical = JSON.stringify({
+      title: params.title,
+      content: params.content,
+      status: params.status,
+      categoryId: params.categoryId,
+      tags: [...params.tags].sort(),
+    });
+    return createHash('sha1').update(canonical).digest('hex');
+  }
+
   private async ensureCollection(vectorSize: number): Promise<void> {
     try {
       await this.qdrant.get(`/collections/${this.vectorCollection}`);
@@ -433,6 +640,37 @@ export class RagService {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         return false;
+      }
+      throw this.toVectorDbError(error);
+    }
+  }
+
+  private async getStoredArticleFingerprint(
+    articleId: string,
+  ): Promise<string | null> {
+    try {
+      const response = await this.qdrant.post<{
+        result?: { points?: Array<{ payload?: { articleFingerprint?: string } }> };
+      }>(`/collections/${this.vectorCollection}/points/scroll`, {
+        limit: 1,
+        with_payload: true,
+        with_vector: false,
+        filter: {
+          must: [
+            {
+              key: 'articleId',
+              match: { value: articleId },
+            },
+          ],
+        },
+      });
+
+      const fingerprint =
+        response.data.result?.points?.[0]?.payload?.articleFingerprint;
+      return typeof fingerprint === 'string' ? fingerprint : null;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return null;
       }
       throw this.toVectorDbError(error);
     }
