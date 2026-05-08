@@ -59,55 +59,117 @@ If you use Docker PostgreSQL on `localhost:5432`, make sure local Postgres servi
   - summarize/translate **cache** hits, misses, and hit ratio
   - last upstream error **category** and HTTP status (no secrets in the payload)
 
-## Knowledge Hub + Gemini (assignment)
+## Knowledge Hub RAG (Gemini + Qdrant)
 
-### 1) How to get a Google Gemini API key
+### 1) How to get a Gemini API key (step-by-step)
 
-1. Open [Google AI Studio](https://aistudio.google.com) and sign in with a Google account.
-2. If the site or API says your **location is not supported**, use a **supported network path** (for example a desktop VPN with a **US** exit) before creating the key. Browser-only VPN extensions do not change traffic from the terminal or Docker; use a **system VPN** for server-side `curl` and Nest, or route HTTP through a local proxy (see [Gemini proxy quick setup](#gemini-proxy-quick-setup-fiddler--mitmproxy)) so outbound requests use the same path.
-3. In AI Studio, create or pick a project.
-4. Go to **API keys** → **Create API key**.
-5. Copy the key into `.env` as `GEMINI_API_KEY` (never commit the real key).
+1. Open [Google AI Studio](https://aistudio.google.com) and sign in.
+2. Choose or create a Google Cloud project in AI Studio.
+3. Open **API keys**.
+4. Click **Create API key**.
+5. Copy key to local `.env` as `GEMINI_API_KEY`.
 
-### 2) Which model is used
+If your region is restricted, use a supported egress path (system VPN and/or HTTP proxy for container traffic).
 
-- Set `GEMINI_MODEL` in `.env` (for example `gemini-2.0-flash` or `gemini-2.5-flash` if your key has access). The app calls `https://generativelanguage.googleapis.com` and the `generateContent` API for that model.
+### 2) Gemini models used
 
-### 3) After clone: required env and where the key lives
+- **Generation model**: configured via `GEMINI_MODEL` (current default in `.env.example`: `gemini-3.1-flash-lite`).
+- **Embedding model**: configured via `GEMINI_EMBEDDING_MODEL` (default in `.env.example`: `gemini-embedding-002`; if unavailable for your key/region, use a supported one such as `gemini-embedding-001`).
 
-- Copy `cp .env.example .env`.
-- Put the real key only in local `.env` (and in your password manager), not in git.
-- Main variables: `GEMINI_API_KEY`, `GEMINI_API_BASE_URL`, `GEMINI_MODEL`, `AI_RATE_LIMIT_RPM`, `AI_CACHE_TTL_SEC`, and optional `AI_PROXY_*` for HTTP proxying (see above).
-- For **Docker**, use `AI_PROXY_HOST=host.docker.internal` if the proxy runs on the host (for example `mitmweb` on `8888`).
+### 3) Vector DB and Docker Compose setup
 
-### 4) Run the app and test AI endpoints
+RAG uses **Qdrant** as external vector DB in Docker Compose:
 
-1. Run DB migrations and seed (see [Prisma](#prisma)) so at least one article exists for article-based AI routes.
-2. Start the API (`npm start` or `docker compose up --build`).
-3. Open Swagger at `http://localhost:4000/doc`, click **Authorize**, and paste `Bearer <accessToken>` (get tokens via `POST /auth/login` after seed — default seed users include `admin` / `password123`).
-4. Try:
-   - `POST /ai/articles/{articleId}/summarize` with body `{ "maxLength": "medium" }` (optional).
-   - `POST /ai/articles/{articleId}/translate` with `{ "targetLanguage": "English" }`.
-   - `POST /ai/articles/{articleId}/analyze` with `{ "task": "review" }` (optional).
-   - Optional: `POST /ai/generate` with `{ "prompt": "Your question" }` and optional `"sessionId"` (UUID from the previous response) to keep **short-term conversation context** in memory.
-   - `GET /ai/test` — minimal Gemini connectivity check (requires auth).
+- service: `vectordb` (`qdrant/qdrant:v1.13.4`)
+- URL for app: `RAG_VECTOR_DB_URL=http://vectordb:6333`
+- persistent storage: `qdrant-data` volume
+- healthcheck + restart policy configured
+- `app` waits for healthy `db` and healthy `vectordb`
 
-Example with `curl` (replace `TOKEN` and `ARTICLE_ID`):
+### 4) Full startup flow after clone
+
+1. Clone and install:
 
 ```bash
-curl -s http://localhost:4000/ai/articles/ARTICLE_ID/summarize \
-  -H "Authorization: Bearer TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"maxLength":"short"}'
+git clone <repository-url>
+cd nodejs-2026q1-knowledge-hub
+npm install
+```
+
+2. Configure env:
+
+```bash
+cp .env.example .env
+```
+
+Set at least:
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `GEMINI_EMBEDDING_MODEL`
+- `RAG_VECTOR_DB_URL`
+- `RAG_VECTOR_COLLECTION`
+- `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`
+- `RAG_CONVERSATION_MAX_MESSAGES`
+
+3. Start stack:
+
+```bash
+docker compose up --build
+```
+
+4. Apply migrations and seed:
+
+```bash
+npx prisma migrate deploy
+npm run prisma:seed
+```
+
+5. Login and authorize in Swagger:
+- Swagger: `http://localhost:4000/doc`
+- get token via `POST /auth/login`
+- click **Authorize** and pass `Bearer <token>`
+
+6. Build vector index:
+
+```bash
+curl -X POST 'http://localhost:4000/ai/rag/index' \
+  -H 'Authorization: Bearer <TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"onlyPublished": true}'
+```
+
+7. Run semantic search:
+
+```bash
+curl -X POST 'http://localhost:4000/ai/rag/search' \
+  -H 'Authorization: Bearer <TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"initial prisma setup for nest project","limit":5}'
+```
+
+8. Run RAG chat:
+
+```bash
+curl -X POST 'http://localhost:4000/ai/rag/chat' \
+  -H 'Authorization: Bearer <TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What do we have about Prisma and NestJS?"}'
+```
+
+9. Optional conversation history:
+
+```bash
+curl -X GET 'http://localhost:4000/ai/rag/chat/<CONVERSATION_ID>/history' \
+  -H 'Authorization: Bearer <TOKEN>'
 ```
 
 ### 5) Known limitations
 
-- **Free tier quotas**: Gemini may return rate-limit / quota errors; the service maps many upstream failures to `503` and retries some transient cases.
-- **Latency**: LLM calls can be slow; tune timeouts only if you accept operational trade-offs.
-- **Regional availability**: Some regions are blocked for the API; use a supported egress path (VPN/proxy) where needed.
-- **In-memory cache and usage**: Summarize/translate responses are cached in process memory with TTL; usage counters reset on restart.
-- **Conversation sessions** for `POST /ai/generate` are stored in process memory (not shared across instances); they expire after `AI_CONVERSATION_TTL_SEC`.
+- **Free-tier quotas**: low RPM/RPD can cause throttling (`429`) and temporary unavailability (`503`).
+- **Latency**: indexing can be slow because each chunk requires embedding generation and vector upsert.
+- **Regional availability**: Gemini model availability differs by region/account.
+- **Model availability differences**: some embedding models may return `NOT_FOUND` for specific keys/regions; switch `GEMINI_EMBEDDING_MODEL` accordingly.
+- **Conversation memory storage**: current chat memory is in-process (in-memory), so history resets on restart and is not shared between replicas.
 
 ### 6) Structured LLM output and observability (rubric “Hacker” items)
 
@@ -183,7 +245,7 @@ For more information about OpenAPI/Swagger please visit https://swagger.io/.
 
 ## Docker
 
-### Start full stack (app + PostgreSQL)
+### Start full stack (app + PostgreSQL + Qdrant)
 
 ```bash
 docker compose up --build
@@ -194,6 +256,7 @@ After startup:
 - API: http://localhost:4000
 - Swagger: http://localhost:4000/doc
 - PostgreSQL: `localhost:5432`
+- Qdrant: `localhost:6333` (REST), `localhost:6334` (gRPC)
 
 Apply migrations and seed (from host terminal):
 
